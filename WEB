@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>研以致用講座平台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;600&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --ink:#1a1a2e;--ink2:#4a4a6a;--ink3:#8888aa;
+    --cream:#f8f7f2;--gold:#c9a84c;--gold2:#e8c87a;
+    --teal:#2d7a6b;--teal2:#3d9b89;
+    --border:#e0ddd5;--card:#ffffff;
+    --danger:#c0392b;--success:#2d7a6b;
+  }
+  body{font-family:'Noto Sans TC',sans-serif;background:var(--cream);color:var(--ink);min-height:100vh}
+
+  nav{background:var(--ink);padding:0 2rem;display:flex;align-items:center;justify-content:space-between;height:60px;position:sticky;top:0;z-index:100}
+  .nav-logo{font-family:'Noto Serif TC',serif;color:var(--gold);font-size:1.1rem;font-weight:600;letter-spacing:2px;text-decoration:none}
+  .nav-links{display:flex;gap:1.5rem}
+  .nav-links a{color:#ccc;font-size:0.85rem;cursor:pointer;text-decoration:none;transition:color .2s}
+  .nav-links a:hover{color:var(--gold)}
+  .admin-btn{background:var(--gold);color:var(--ink);border:none;padding:6px 14px;border-radius:4px;font-size:0.82rem;cursor:pointer;font-family:inherit;font-weight:500}
+
+  .hero{background:linear-gradient(135deg,var(--ink) 0%,#2d2d4e 100%);padding:4rem 2rem;text-align:center;position:relative;overflow:hidden}
+  .hero::before{content:'';position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:radial-gradient(ellipse at 30% 50%,rgba(201,168,76,0.08) 0%,transparent 60%)}
+  .hero h1{font-family:'Noto Serif TC',serif;color:#fff;font-size:2.2rem;font-weight:600;margin-bottom:0.8rem;position:relative}
+  .hero h1 span{color:var(--gold)}
+  .hero p{color:#aaa;font-size:0.95rem;position:relative;max-width:500px;margin:0 auto}
+
+  .section{padding:2.5rem 1.5rem;max-width:960px;margin:0 auto}
+  .section-title{display:flex;align-items:center;gap:10px;margin-bottom:1.5rem}
+  .section-title h2{font-family:'Noto Serif TC',serif;font-size:1.3rem;color:var(--ink)}
+  .section-title .line{flex:1;height:1px;background:var(--border)}
+  .tag{display:inline-block;background:var(--gold2);color:var(--ink);font-size:0.72rem;padding:3px 10px;border-radius:20px;margin-bottom:8px;font-weight:500}
+
+  .lecture-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem}
+  .lecture-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:1.2rem;transition:box-shadow .2s;position:relative}
+  .lecture-card:hover{box-shadow:0 4px 20px rgba(0,0,0,0.08)}
+  .lecture-card h3{font-size:1rem;font-weight:500;margin-bottom:6px;color:var(--ink);line-height:1.5}
+  .lecture-card .meta{font-size:0.8rem;color:var(--ink3);margin-bottom:4px;display:flex;align-items:center;gap:5px}
+  .register-btn{display:inline-block;margin-top:10px;padding:6px 16px;background:var(--teal);color:#fff;border-radius:5px;font-size:0.82rem;text-decoration:none;cursor:pointer;border:none;font-family:inherit;transition:background .2s}
+  .register-btn:hover{background:var(--teal2)}
+  .full-tag{background:#fdecea;color:var(--danger);font-size:0.72rem;padding:3px 10px;border-radius:20px;display:inline-block;margin-top:10px}
+
+  .ai-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:1rem}
+  .ai-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:1.2rem;transition:box-shadow .2s}
+  .ai-card:hover{box-shadow:0 4px 20px rgba(0,0,0,0.08)}
+  .ai-icon{width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-bottom:10px;font-size:20px}
+  .ai-card h3{font-size:0.95rem;font-weight:500;margin-bottom:5px}
+  .ai-card p{font-size:0.8rem;color:var(--ink3);line-height:1.6;margin-bottom:10px}
+  .ai-link{font-size:0.8rem;color:var(--teal);text-decoration:none;font-weight:500}
+  .ai-link:hover{text-decoration:underline}
+
+  .consult-box{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:2rem;text-align:center;max-width:560px;margin:0 auto}
+  .consult-box h3{font-family:'Noto Serif TC',serif;font-size:1.2rem;margin-bottom:8px}
+  .consult-box p{font-size:0.88rem;color:var(--ink2);line-height:1.7;margin-bottom:1.2rem}
+  .consult-btn{display:inline-block;padding:10px 28px;background:var(--ink);color:#fff;border-radius:6px;font-size:0.9rem;text-decoration:none;cursor:pointer;border:none;font-family:inherit;transition:background .2s}
+  .consult-btn:hover{background:#2d2d4e}
+  .consult-features{display:flex;justify-content:center;gap:1.5rem;margin-top:1.2rem;flex-wrap:wrap}
+  .consult-features span{font-size:0.78rem;color:var(--ink3)}
+
+  /* Admin Panel */
+  .admin-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:200;align-items:center;justify-content:center}
+  .admin-overlay.active{display:flex}
+  .admin-modal{background:#fff;border-radius:12px;width:90%;max-width:720px;max-height:85vh;overflow:hidden;display:flex;flex-direction:column}
+  .admin-header{background:var(--ink);padding:1rem 1.5rem;display:flex;align-items:center;justify-content:space-between}
+  .admin-header h2{color:var(--gold);font-family:'Noto Serif TC',serif;font-size:1.1rem;font-weight:600}
+  .admin-close{background:none;border:none;color:#aaa;font-size:1.3rem;cursor:pointer;line-height:1}
+  .admin-body{padding:1.2rem;overflow-y:auto;flex:1}
+  .admin-tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:1.2rem}
+  .admin-tab{padding:8px 16px;border:none;background:none;font-size:0.85rem;cursor:pointer;font-family:inherit;color:var(--ink3);border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .2s}
+  .admin-tab.active{color:var(--teal);border-bottom-color:var(--teal);font-weight:500}
+  .admin-section{display:none}
+  .admin-section.active{display:block}
+
+  .item-list{display:flex;flex-direction:column;gap:8px;margin-bottom:1rem}
+  .item-row{display:flex;align-items:center;gap:8px;background:#f9f9f9;border:1px solid var(--border);border-radius:8px;padding:10px 12px}
+  .item-row .item-info{flex:1;min-width:0}
+  .item-row .item-name{font-size:0.88rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .item-row .item-sub{font-size:0.76rem;color:var(--ink3)}
+  .del-btn{background:#fdecea;border:none;color:var(--danger);border-radius:5px;padding:5px 10px;font-size:0.78rem;cursor:pointer;white-space:nowrap;font-family:inherit}
+
+  .add-form{background:#f5f5f0;border-radius:8px;padding:1rem;border:1px solid var(--border)}
+  .add-form h4{font-size:0.88rem;font-weight:500;margin-bottom:10px;color:var(--ink)}
+  .form-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+  .form-row.full{grid-template-columns:1fr}
+  .form-input{width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.83rem;font-family:inherit;background:#fff;color:var(--ink)}
+  .form-input:focus{outline:none;border-color:var(--teal)}
+  .add-submit{background:var(--teal);color:#fff;border:none;padding:7px 18px;border-radius:6px;font-size:0.83rem;cursor:pointer;font-family:inherit;margin-top:4px}
+  .add-submit:hover{background:var(--teal2)}
+
+  .settings-block{margin-bottom:1.2rem}
+  .settings-block label{display:block;font-size:0.82rem;font-weight:500;margin-bottom:6px;color:var(--ink2)}
+  .settings-block .form-input{margin-bottom:6px}
+  .save-btn{background:var(--ink);color:#fff;border:none;padding:7px 18px;border-radius:6px;font-size:0.83rem;cursor:pointer;font-family:inherit}
+
+  footer{background:var(--ink);color:#888;text-align:center;padding:1.5rem;font-size:0.8rem;margin-top:2rem}
+  footer span{color:var(--gold)}
+
+  @media(max-width:600px){
+    .nav-links{display:none}
+    .hero h1{font-size:1.6rem}
+    .form-row{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <span class="nav-logo">研以致用</span>
+  <div class="nav-links">
+    <a onclick="scrollToSection('lectures')">講座資訊</a>
+    <a onclick="scrollToSection('ai')">AI工具</a>
+    <a onclick="scrollToSection('consult')">諮詢平台</a>
+  </div>
+  <button class="admin-btn" onclick="openAdmin()">管理後台</button>
+</nav>
+
+<div class="hero">
+  <h1>研以<span>致用</span>講座平台</h1>
+  <p>連結學術研究與實務應用，提供系列講座、AI工具分享及個人諮詢服務</p>
+</div>
+
+<div class="section" id="lectures">
+  <div class="section-title">
+    <h2>📚 講座資訊與報名</h2>
+    <div class="line"></div>
+  </div>
+  <div class="lecture-grid" id="lecture-list"></div>
+</div>
+
+<div class="section" id="ai">
+  <div class="section-title">
+    <h2>🤖 AI 工具分享</h2>
+    <div class="line"></div>
+  </div>
+  <div class="ai-grid" id="ai-list"></div>
+</div>
+
+<div class="section" id="consult">
+  <div class="section-title">
+    <h2>💬 諮詢平台</h2>
+    <div class="line"></div>
+  </div>
+  <div class="consult-box">
+    <h3>預約一對一諮詢</h3>
+    <p id="consult-desc">歡迎填寫諮詢表單，我們將在 1-2 個工作天內與您聯繫，提供研究方法、學術寫作及職涯發展等方向的專業建議。</p>
+    <button class="consult-btn" id="consult-cta" onclick="openConsultForm()">填寫諮詢表單</button>
+    <div class="consult-features">
+      <span>✓ 免費諮詢</span>
+      <span>✓ 專業回覆</span>
+      <span>✓ 保密原則</span>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div>© 2025 <span>研以致用</span>・All Rights Reserved</div>
+</footer>
+
+<!-- Admin Modal -->
+<div class="admin-overlay" id="adminOverlay">
+  <div class="admin-modal">
+    <div class="admin-header">
+      <h2>管理後台</h2>
+      <button class="admin-close" onclick="closeAdmin()">✕</button>
+    </div>
+    <div class="admin-body">
+      <div class="admin-tabs">
+        <button class="admin-tab active" onclick="switchTab('tab-lectures',this)">講座管理</button>
+        <button class="admin-tab" onclick="switchTab('tab-ai',this)">AI工具管理</button>
+        <button class="admin-tab" onclick="switchTab('tab-consult',this)">諮詢設定</button>
+      </div>
+
+      <!-- Lectures Tab -->
+      <div class="admin-section active" id="tab-lectures">
+        <div class="item-list" id="admin-lecture-list"></div>
+        <div class="add-form">
+          <h4>＋ 新增講座</h4>
+          <div class="form-row">
+            <input class="form-input" id="l-title" placeholder="講座標題">
+            <input class="form-input" id="l-date" placeholder="日期（如 2025/08/15）">
+          </div>
+          <div class="form-row">
+            <input class="form-input" id="l-speaker" placeholder="主講人">
+            <input class="form-input" id="l-location" placeholder="地點">
+          </div>
+          <div class="form-row full">
+            <input class="form-input" id="l-url" placeholder="Google 表單報名連結">
+          </div>
+          <div class="form-row">
+            <input class="form-input" id="l-tag" placeholder="標籤（如 研究方法）">
+            <select class="form-input" id="l-status">
+              <option value="open">開放報名</option>
+              <option value="full">名額已滿</option>
+            </select>
+          </div>
+          <button class="add-submit" onclick="addLecture()">新增講座</button>
+        </div>
+      </div>
+
+      <!-- AI Tools Tab -->
+      <div class="admin-section" id="tab-ai">
+        <div class="item-list" id="admin-ai-list"></div>
+        <div class="add-form">
+          <h4>＋ 新增 AI 工具</h4>
+          <div class="form-row">
+            <input class="form-input" id="ai-name" placeholder="工具名稱">
+            <input class="form-input" id="ai-emoji" placeholder="圖示 emoji（如 🔍）">
+          </div>
+          <div class="form-row full">
+            <input class="form-input" id="ai-desc" placeholder="工具簡介（一句話）">
+          </div>
+          <div class="form-row">
+            <input class="form-input" id="ai-url" placeholder="官網連結">
+            <input class="form-input" id="ai-color" placeholder="顏色（如 #e8f4f8）">
+          </div>
+          <button class="add-submit" onclick="addAI()">新增工具</button>
+        </div>
+      </div>
+
+      <!-- Consult Tab -->
+      <div class="admin-section" id="tab-consult">
+        <div class="settings-block">
+          <label>諮詢說明文字</label>
+          <textarea class="form-input" id="consult-text" rows="3" style="resize:vertical"></textarea>
+        </div>
+        <div class="settings-block">
+          <label>Google 表單連結</label>
+          <input class="form-input" id="consult-url" placeholder="https://forms.gle/...">
+        </div>
+        <div class="settings-block">
+          <label>按鈕文字</label>
+          <input class="form-input" id="consult-btn-text" placeholder="填寫諮詢表單">
+        </div>
+        <button class="save-btn" onclick="saveConsult()">儲存設定</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const STORAGE_KEY = 'yanyi_platform_data';
+
+  const defaultState = {
+    lectures: [
+      {id:1,title:'質性研究方法入門：訪談設計與編碼技巧',date:'2025/05/20',speaker:'陳美玲 副教授',location:'台大社科院 101室',url:'https://forms.gle/example1',tag:'研究方法',status:'open'},
+      {id:2,title:'學術論文投稿策略：如何選擇期刊與撰寫回覆',date:'2025/06/10',speaker:'林志偉 教授',location:'線上 (Zoom)',url:'https://forms.gle/example2',tag:'學術寫作',status:'open'},
+      {id:3,title:'量化研究中的因果推論：DiD 與 RDD 應用',date:'2025/07/03',speaker:'王雅芳 助理教授',location:'政大綜院 602',url:'https://forms.gle/example3',tag:'統計方法',status:'full'},
+    ],
+    aiTools: [
+      {id:1,name:'NotebookLM',emoji:'📓',desc:'Google AI 筆記本，上傳資料後可進行智慧問答與摘要',url:'https://notebooklm.google.com',color:'#e8f4f8'},
+      {id:2,name:'Perplexity AI',emoji:'🔍',desc:'AI 搜尋引擎，自動彙整多來源資料並附上引用出處',url:'https://www.perplexity.ai',color:'#f0e8f8'},
+      {id:3,name:'Elicit',emoji:'📊',desc:'專為學術研究設計的 AI，自動摘要論文並提取關鍵數據',url:'https://elicit.com',color:'#e8f8f0'},
+      {id:4,name:'Zotero + AI',emoji:'🗂️',desc:'文獻管理工具，結合 AI 外掛快速整理研究資料庫',url:'https://www.zotero.org',color:'#fdf4e8'},
+    ],
+    consult: {
+      text:'歡迎填寫諮詢表單，我們將在 1-2 個工作天內與您聯繫，提供研究方法、學術寫作及職涯發展等方向的專業建議。',
+      url:'',
+      btnText:'填寫諮詢表單'
+    },
+    nextId: 10
+  };
+
+  function loadState() {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      return saved ? JSON.parse(saved) : JSON.parse(JSON.stringify(defaultState));
+    } catch(e) {
+      return JSON.parse(JSON.stringify(defaultState));
+    }
+  }
+
+  function saveState() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+
+  let state = loadState();
+
+  function render() {
+    renderLectures();
+    renderAI();
+    renderAdminLectures();
+    renderAdminAI();
+  }
+
+  function renderLectures() {
+    const c = document.getElementById('lecture-list');
+    if (state.lectures.length === 0) {
+      c.innerHTML = '<p style="color:#8888aa;font-size:0.9rem">目前尚無講座資訊，請管理者新增。</p>';
+      return;
+    }
+    c.innerHTML = state.lectures.map(l => `
+      <div class="lecture-card">
+        <div class="tag">${l.tag}</div>
+        <h3>${l.title}</h3>
+        <div class="meta">🗓 ${l.date}</div>
+        <div class="meta">📍 ${l.location}</div>
+        <div class="meta">👤 主講：${l.speaker}</div>
+        ${l.status === 'open'
+          ? `<a class="register-btn" href="${l.url}" target="_blank">立即報名</a>`
+          : `<span class="full-tag">名額已滿</span>`}
+      </div>`).join('');
+  }
+
+  function renderAI() {
+    const c = document.getElementById('ai-list');
+    if (state.aiTools.length === 0) {
+      c.innerHTML = '<p style="color:#8888aa;font-size:0.9rem">目前尚無工具資訊，請管理者新增。</p>';
+      return;
+    }
+    c.innerHTML = state.aiTools.map(t => `
+      <div class="ai-card">
+        <div class="ai-icon" style="background:${t.color}">${t.emoji}</div>
+        <h3>${t.name}</h3>
+        <p>${t.desc}</p>
+        <a class="ai-link" href="${t.url}" target="_blank">前往工具 →</a>
+      </div>`).join('');
+  }
+
+  function renderAdminLectures() {
+    const c = document.getElementById('admin-lecture-list');
+    c.innerHTML = state.lectures.map(l => `
+      <div class="item-row">
+        <div class="item-info">
+          <div class="item-name">${l.title}</div>
+          <div class="item-sub">${l.date} ・ ${l.speaker} ・ ${l.status === 'open' ? '開放報名' : '名額已滿'}</div>
+        </div>
+        <button class="del-btn" onclick="delLecture(${l.id})">移除</button>
+      </div>`).join('') || '<div style="color:#8888aa;font-size:0.85rem;padding:8px 0">尚無講座</div>';
+  }
+
+  function renderAdminAI() {
+    const c = document.getElementById('admin-ai-list');
+    c.innerHTML = state.aiTools.map(t => `
+      <div class="item-row">
+        <div class="item-info">
+          <div class="item-name">${t.emoji} ${t.name}</div>
+          <div class="item-sub">${t.desc}</div>
+        </div>
+        <button class="del-btn" onclick="delAI(${t.id})">移除</button>
+      </div>`).join('') || '<div style="color:#8888aa;font-size:0.85rem;padding:8px 0">尚無工具</div>';
+  }
+
+  function addLecture() {
+    const title = document.getElementById('l-title').value.trim();
+    const date = document.getElementById('l-date').value.trim();
+    const speaker = document.getElementById('l-speaker').value.trim();
+    const location = document.getElementById('l-location').value.trim();
+    const url = document.getElementById('l-url').value.trim();
+    const tag = document.getElementById('l-tag').value.trim() || '講座';
+    const status = document.getElementById('l-status').value;
+    if (!title || !date) { alert('請填寫講座標題和日期'); return; }
+    state.lectures.push({ id: state.nextId++, title, date, speaker, location, url, tag, status });
+    ['l-title','l-date','l-speaker','l-location','l-url','l-tag'].forEach(id => document.getElementById(id).value = '');
+    saveState();
+    render();
+  }
+
+  function delLecture(id) {
+    if (!confirm('確定要移除這場講座嗎？')) return;
+    state.lectures = state.lectures.filter(l => l.id !== id);
+    saveState();
+    render();
+  }
+
+  function addAI() {
+    const name = document.getElementById('ai-name').value.trim();
+    const emoji = document.getElementById('ai-emoji').value.trim() || '🔧';
+    const desc = document.getElementById('ai-desc').value.trim();
+    const url = document.getElementById('ai-url').value.trim();
+    const color = document.getElementById('ai-color').value.trim() || '#f0f0f0';
+    if (!name || !desc) { alert('請填寫工具名稱和簡介'); return; }
+    state.aiTools.push({ id: state.nextId++, name, emoji, desc, url, color });
+    ['ai-name','ai-emoji','ai-desc','ai-url','ai-color'].forEach(id => document.getElementById(id).value = '');
+    saveState();
+    render();
+  }
+
+  function delAI(id) {
+    if (!confirm('確定要移除這個工具嗎？')) return;
+    state.aiTools = state.aiTools.filter(t => t.id !== id);
+    saveState();
+    render();
+  }
+
+  function saveConsult() {
+    const text = document.getElementById('consult-text').value.trim();
+    const url = document.getElementById('consult-url').value.trim();
+    const btnText = document.getElementById('consult-btn-text').value.trim();
+    if (text) state.consult.text = text;
+    if (url) state.consult.url = url;
+    if (btnText) state.consult.btnText = btnText;
+    document.getElementById('consult-desc').textContent = state.consult.text;
+    document.getElementById('consult-cta').textContent = state.consult.btnText;
+    saveState();
+    alert('諮詢設定已儲存！');
+  }
+
+  function openConsultForm() {
+    if (state.consult.url) window.open(state.consult.url, '_blank');
+    else alert('管理者尚未設定諮詢表單連結，請至管理後台 → 諮詢設定填入連結。');
+  }
+
+  function openAdmin() {
+    document.getElementById('consult-text').value = state.consult.text;
+    document.getElementById('consult-url').value = state.consult.url;
+    document.getElementById('consult-btn-text').value = state.consult.btnText;
+    document.getElementById('adminOverlay').classList.add('active');
+    renderAdminLectures();
+    renderAdminAI();
+  }
+
+  function closeAdmin() {
+    document.getElementById('adminOverlay').classList.remove('active');
+  }
+
+  function switchTab(id, btn) {
+    document.querySelectorAll('.admin-section').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.admin-tab').forEach(b => b.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    btn.classList.add('active');
+  }
+
+  function scrollToSection(id) {
+    document.getElementById(id).scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  document.getElementById('adminOverlay').addEventListener('click', function(e) {
+    if (e.target === this) closeAdmin();
+  });
+
+  render();
+</script>
+</body>
+</html>
