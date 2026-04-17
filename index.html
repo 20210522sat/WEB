@@ -142,25 +142,38 @@ nav{background:var(--nav-bg);padding:0 2rem;display:flex;align-items:center;just
 .custom-block p{font-size:.88rem;color:var(--ink2);line-height:1.8;white-space:pre-wrap}
 .empty-msg{color:var(--ink3);font-size:.88rem;padding:2.5rem 0;text-align:center}
 
-.cf-wrap{max-width:960px;margin:0 auto;padding:0 1.5rem 3rem;display:grid;grid-template-columns:1fr 1fr;gap:1.4rem}
-@media(max-width:640px){.cf-wrap{grid-template-columns:1fr}}
-.contact-box,.feedback-box{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:1.6rem}
-.contact-box h3,.feedback-box h3{font-family:var(--font-display);font-size:1rem;margin-bottom:1rem;color:var(--ink)}
-.ci{display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;font-size:.84rem;color:var(--ink2)}
-.ci .cii{font-size:1rem;flex-shrink:0;margin-top:1px}
-.ci a{color:var(--teal);text-decoration:none}
-.ci a:hover{text-decoration:underline}
+/* FOOTER AREA */
+.site-footer{background:var(--nav-bg)}
+.footer-cf{max-width:960px;margin:0 auto;padding:2.5rem 2rem 2rem;display:grid;grid-template-columns:1fr 1fr;gap:3rem;border-bottom:1px solid rgba(255,255,255,.08)}
+@media(max-width:640px){.footer-cf{grid-template-columns:1fr;gap:2rem;padding:2rem 1.5rem}}
+.footer-contact h4,.footer-feedback h4{font-family:var(--font-display);font-size:.92rem;color:rgba(255,255,255,.85);margin-bottom:1rem;font-weight:600}
+.ci{display:flex;align-items:flex-start;gap:10px;margin-bottom:9px;font-size:.82rem;color:rgba(255,255,255,.45)}
+.ci .cii{font-size:.95rem;flex-shrink:0;margin-top:1px;opacity:.7}
+.ci a{color:rgba(94,207,186,.8);text-decoration:none}
+.ci a:hover{color:#5ecfba;text-decoration:underline}
+.ci strong{color:rgba(255,255,255,.6);font-size:.76rem;display:block;margin-bottom:1px}
+.footer-feedback p{font-size:.82rem;color:rgba(255,255,255,.4);line-height:1.7;margin-bottom:1rem}
+.fb-link-btn{display:inline-flex;align-items:center;gap:7px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.75);padding:8px 18px;border-radius:6px;font-size:.82rem;cursor:pointer;font-family:inherit;transition:all .2s}
+.fb-link-btn:hover{background:rgba(255,255,255,.13);color:#fff;border-color:rgba(255,255,255,.3)}
+.footer-bottom{text-align:center;padding:1.2rem 1rem}
+.footer-hospital{font-size:.69rem;color:rgba(255,255,255,.25);margin-bottom:4px}
+.footer-main{font-size:.77rem;color:#444}
+.footer-main span{color:var(--gold)}
+
+/* FEEDBACK MODAL */
+.fb-modal-overlay{display:none;position:fixed;inset:0;background:rgba(10,10,25,.7);z-index:400;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.fb-modal-overlay.active{display:flex}
+.fb-modal{background:#fff;border-radius:16px;padding:2rem;width:90%;max-width:440px}
+.fb-modal h3{font-family:var(--font-display);font-size:1rem;margin-bottom:.4rem;color:var(--ink)}
+.fb-modal>p{font-size:.81rem;color:var(--ink3);margin-bottom:1.2rem}
 .fb-field{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:.83rem;font-family:inherit;color:var(--ink);margin-bottom:8px;resize:vertical;background:#fff}
 .fb-field:focus{outline:none;border-color:var(--teal)}
+.fb-modal-actions{display:flex;gap:8px;margin-top:4px}
 .fb-submit{background:var(--teal);color:#fff;border:none;padding:8px 20px;border-radius:7px;font-size:.83rem;cursor:pointer;font-family:inherit;font-weight:500;transition:background .2s}
 .fb-submit:hover{background:var(--teal2)}
 .fb-submit:disabled{opacity:.6;cursor:not-allowed}
-.fb-ok{font-size:.82rem;color:var(--teal);margin-top:6px;display:none}
-
-footer{background:var(--nav-bg);color:#555;text-align:center;padding:1.6rem 1rem}
-.footer-hospital{font-size:.71rem;color:rgba(255,255,255,.28);margin-bottom:5px}
-.footer-main{font-size:.79rem}
-.footer-main span{color:var(--gold)}
+.fb-modal-cancel{background:none;border:1px solid var(--border);color:var(--ink3);padding:8px 14px;border-radius:7px;font-size:.83rem;cursor:pointer;font-family:inherit}
+.fb-ok{font-size:.82rem;color:var(--teal);margin-top:8px;display:none}
 
 /* THEME */
 .theme-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:250;align-items:flex-start;justify-content:flex-end}
@@ -308,14 +321,26 @@ footer{background:var(--nav-bg);color:#555;text-align:center;padding:1.6rem 1rem
     <div class="stat-item"><div class="stat-num" id="stat-ai">—</div><div class="stat-label">AI 工具推薦</div></div>
     <div class="stat-item"><div class="stat-num">免費</div><div class="stat-label">諮詢服務</div></div>
   </div>
-  <div class="cf-wrap" id="home-cf"></div>
-  <footer>
-    <div class="footer-hospital" id="f-hospital"></div>
-    <div class="footer-main">© 2026 <span id="f-title"></span>・All Rights Reserved</div>
-  </footer>
+  <div id="home-footer-area"></div>
 </div>
 
 <div id="dynamic-pages"></div>
+
+<!-- FEEDBACK MODAL -->
+<div class="fb-modal-overlay" id="fbModalOverlay">
+  <div class="fb-modal">
+    <h3 id="fb-modal-title">💌 意見回饋</h3>
+    <p>歡迎填寫您的問題或建議，我們將盡快回覆。</p>
+    <textarea class="fb-field" id="fb-modal-msg" rows="4" placeholder="請填寫您的問題或建議..."></textarea>
+    <input class="fb-field" id="fb-modal-name" placeholder="您的姓名（選填）" style="resize:none">
+    <input class="fb-field" id="fb-modal-email" type="email" placeholder="Email（選填）" style="resize:none">
+    <div class="fb-modal-actions">
+      <button class="fb-submit" id="fb-modal-submit" onclick="submitFeedbackModal()">送出回饋</button>
+      <button class="fb-modal-cancel" onclick="closeFbModal()">取消</button>
+    </div>
+    <div class="fb-ok" id="fb-modal-ok">✅ 感謝您的回饋，我們已收到！</div>
+  </div>
+</div>
 
 <!-- THEME -->
 <div class="theme-overlay" id="themeOverlay">
@@ -560,7 +585,12 @@ function updateStats() {
 // ═══════════════════════════════════════════
 function renderAll() {
   renderNav(); renderHomeHero(); renderHomeCards();
-  renderDynamicPages(); renderCF('home-cf'); renderFooter(); updateStats();
+  renderDynamicPages(); renderHomeFooter(); updateStats();
+}
+
+function renderHomeFooter() {
+  const el = document.getElementById('home-footer-area');
+  if (el) el.innerHTML = buildFooterHTML();
 }
 
 function renderNav() {
@@ -636,50 +666,68 @@ function buildPageHTML(p) {
       <p>${p.heroDesc || p.desc}</p>
     </div></div>
     <div class="sub-content">${inner}</div>
-    ${buildCFHTML()}
-    <footer>
+    ${buildFooterHTML()}`;
+}
+
+function buildFooterHTML() {
+  const ct = S.contact; const fb = S.feedback;
+  return `<footer class="site-footer">
+    <div class="footer-cf">
+      <div class="footer-contact">
+        <h4>📍 ${ct.title}</h4>
+        ${ct.items.map(i => `<div class="ci"><span class="cii">${i.icon}</span><div>
+          <strong>${i.label}</strong>
+          ${i.link ? `<a href="${i.link}">${i.value}</a>` : i.value}
+        </div></div>`).join('')}
+      </div>
+      <div class="footer-feedback">
+        <h4>💌 ${fb.title}</h4>
+        <p>有任何問題或建議，歡迎告訴我們，我們將盡快回覆。</p>
+        <button class="fb-link-btn" onclick="openFbModal()">✉ 填寫意見回饋</button>
+      </div>
+    </div>
+    <div class="footer-bottom">
       <div class="footer-hospital">${S.site.hospital}</div>
       <div class="footer-main">© 2026 <span>${S.site.footerTitle || S.site.logo}</span>・All Rights Reserved</div>
-    </footer>`;
+    </div>
+  </footer>`;
 }
 
-function buildCFHTML() {
-  const ct = S.contact; const fb = S.feedback;
-  const uid = Math.random().toString(36).slice(2, 7);
-  return `<div class="cf-wrap">
-    <div class="contact-box">
-      <h3>📍 ${ct.title}</h3>
-      ${ct.items.map(i => `<div class="ci"><span class="cii">${i.icon}</span><div>
-        <strong style="font-size:.79rem;color:var(--ink);display:block">${i.label}</strong>
-        ${i.link ? `<a href="${i.link}">${i.value}</a>` : i.value}
-      </div></div>`).join('')}
-    </div>
-    <div class="feedback-box">
-      <h3>💌 ${fb.title}</h3>
-      <textarea class="fb-field" id="fb-msg-${uid}" rows="3" placeholder="${fb.placeholder}"></textarea>
-      <input class="fb-field" id="fb-name-${uid}" placeholder="您的姓名（選填）" style="resize:none">
-      <input class="fb-field" id="fb-email-${uid}" type="email" placeholder="Email（選填）" style="resize:none">
-      <button class="fb-submit" onclick="submitFeedback(this,'${uid}','${fb.formUrl}')">${fb.btnText}</button>
-      <div class="fb-ok">✅ 感謝您的回饋，我們已收到！</div>
-    </div>
-  </div>`;
+function renderCF(targetId) {
+  // no-op: CF is now part of footer, not injected separately
 }
-function renderCF(targetId) { document.getElementById(targetId).innerHTML = buildCFHTML(); }
+
 function renderFooter() {
-  document.getElementById('f-hospital').textContent = S.site.hospital;
-  document.getElementById('f-title').textContent = S.site.footerTitle || S.site.logo;
+  // footers are rebuilt via renderAll -> renderDynamicPages & home footer
+  const homeFooter = document.querySelector('#page-home .site-footer');
+  if (homeFooter) homeFooter.outerHTML; // trigger rebuild via renderAll
 }
 
-async function submitFeedback(btn, uid, formUrl) {
-  if (formUrl) { window.open(formUrl, '_blank'); return; }
-  const msg = document.getElementById('fb-msg-' + uid)?.value?.trim();
-  const name = document.getElementById('fb-name-' + uid)?.value?.trim();
-  const email = document.getElementById('fb-email-' + uid)?.value?.trim();
-  if (!msg) { alert('請填寫意見內容'); return; }
+function openFbModal() {
+  document.getElementById('fb-modal-msg').value = '';
+  document.getElementById('fb-modal-name').value = '';
+  document.getElementById('fb-modal-email').value = '';
+  document.getElementById('fb-modal-ok').style.display = 'none';
+  document.getElementById('fb-modal-submit').style.display = '';
+  document.getElementById('fb-modal-submit').disabled = false;
+  document.getElementById('fb-modal-submit').textContent = '送出回饋';
+  document.getElementById('fbModalOverlay').classList.add('active');
+  setTimeout(() => document.getElementById('fb-modal-msg').focus(), 100);
+}
+function closeFbModal() { document.getElementById('fbModalOverlay').classList.remove('active'); }
+
+async function submitFeedbackModal() {
+  const msg = document.getElementById('fb-modal-msg').value.trim();
+  const name = document.getElementById('fb-modal-name').value.trim();
+  const email = document.getElementById('fb-modal-email').value.trim();
+  if (!msg) { document.getElementById('fb-modal-msg').focus(); return; }
+  const btn = document.getElementById('fb-modal-submit');
   btn.disabled = true; btn.textContent = '送出中...';
-  await saveFeedbackToDB(name || null, email || null, msg, window._currentPage || 'home');
+  if (S.feedback.formUrl) { window.open(S.feedback.formUrl, '_blank'); closeFbModal(); return; }
+  await saveFeedbackToDB(name || null, email || null, msg, 'modal');
   btn.style.display = 'none';
-  const ok = btn.nextElementSibling; if (ok) ok.style.display = 'block';
+  document.getElementById('fb-modal-ok').style.display = 'block';
+  setTimeout(() => closeFbModal(), 2000);
 }
 
 function openConsultForm(pageId) {
@@ -1041,6 +1089,7 @@ function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&
 // ═══════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════
+document.getElementById('fbModalOverlay').addEventListener('click', function(e) { if (e.target === this) closeFbModal(); });
 document.getElementById('themeOverlay').addEventListener('click', function(e) { if (e.target === this) closeTheme(); });
 document.getElementById('loginOverlay').addEventListener('click', function(e) { if (e.target === this) closeLogin(); });
 document.getElementById('adminOverlay').addEventListener('click', function(e) { if (e.target === this) closeAdmin(); });
