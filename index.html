@@ -100,6 +100,29 @@
   footer{background:var(--ink);color:#888;text-align:center;padding:1.5rem;font-size:0.8rem;margin-top:2rem}
   footer span{color:var(--gold)}
 
+  /* Password Gate */
+  .pw-overlay{display:none;position:fixed;inset:0;background:rgba(15,15,30,0.7);z-index:300;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+  .pw-overlay.active{display:flex}
+  .pw-box{background:#fff;border-radius:14px;padding:2rem 2rem 1.6rem;width:90%;max-width:360px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.2)}
+  .pw-box .pw-icon{font-size:2rem;margin-bottom:0.8rem}
+  .pw-box h3{font-family:'Noto Serif TC',serif;font-size:1.1rem;color:var(--ink);margin-bottom:0.4rem}
+  .pw-box p{font-size:0.82rem;color:var(--ink3);margin-bottom:1.2rem}
+  .pw-input-wrap{position:relative;margin-bottom:0.8rem}
+  .pw-input{width:100%;padding:10px 40px 10px 14px;border:1.5px solid var(--border);border-radius:8px;font-size:0.95rem;font-family:inherit;color:var(--ink);transition:border-color .2s;letter-spacing:2px}
+  .pw-input:focus{outline:none;border-color:var(--teal)}
+  .pw-input.error{border-color:var(--danger);animation:shake .3s}
+  .pw-toggle{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:1rem;color:var(--ink3);padding:0}
+  .pw-submit{width:100%;padding:10px;background:var(--ink);color:#fff;border:none;border-radius:8px;font-size:0.9rem;cursor:pointer;font-family:inherit;font-weight:500;transition:background .2s;margin-bottom:0.5rem}
+  .pw-submit:hover{background:#2d2d4e}
+  .pw-cancel{background:none;border:none;color:var(--ink3);font-size:0.8rem;cursor:pointer;font-family:inherit;padding:4px}
+  .pw-cancel:hover{color:var(--ink)}
+  .pw-err{font-size:0.78rem;color:var(--danger);margin-bottom:0.6rem;min-height:1.2em}
+  .pw-change-wrap{border-top:1px solid var(--border);margin-top:1rem;padding-top:1rem}
+  .pw-change-wrap summary{font-size:0.8rem;color:var(--ink3);cursor:pointer;list-style:none}
+  .pw-change-wrap summary:hover{color:var(--ink)}
+  .pw-change-body{margin-top:0.8rem;display:flex;flex-direction:column;gap:6px}
+  @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+
   @media(max-width:600px){
     .nav-links{display:none}
     .hero h1{font-size:1.6rem}
@@ -160,6 +183,32 @@
 <footer>
   <div>© 2025 <span>研以致用</span>・All Rights Reserved</div>
 </footer>
+
+<!-- Password Gate -->
+<div class="pw-overlay" id="pwOverlay">
+  <div class="pw-box">
+    <div class="pw-icon">🔐</div>
+    <h3>管理後台</h3>
+    <p>請輸入管理員密碼</p>
+    <div class="pw-input-wrap">
+      <input class="pw-input" type="password" id="pw-input" placeholder="輸入密碼" onkeydown="if(event.key==='Enter')submitPw()">
+      <button class="pw-toggle" onclick="togglePwVis()" id="pw-toggle-btn" title="顯示/隱藏密碼">👁</button>
+    </div>
+    <div class="pw-err" id="pw-err"></div>
+    <button class="pw-submit" onclick="submitPw()">進入後台</button>
+    <button class="pw-cancel" onclick="closePwOverlay()">取消</button>
+    <details class="pw-change-wrap" id="pw-change-details">
+      <summary>變更密碼</summary>
+      <div class="pw-change-body">
+        <input class="form-input" type="password" id="pw-old" placeholder="目前密碼">
+        <input class="form-input" type="password" id="pw-new1" placeholder="新密碼（至少 6 字元）">
+        <input class="form-input" type="password" id="pw-new2" placeholder="確認新密碼">
+        <div class="pw-err" id="pw-change-err"></div>
+        <button class="add-submit" onclick="changePw()">確認變更</button>
+      </div>
+    </details>
+  </div>
+</div>
 
 <!-- Admin Modal -->
 <div class="admin-overlay" id="adminOverlay">
@@ -405,14 +454,66 @@
     else alert('管理者尚未設定諮詢表單連結，請至管理後台 → 諮詢設定填入連結。');
   }
 
-  function openAdmin() {
-    document.getElementById('consult-text').value = state.consult.text;
-    document.getElementById('consult-url').value = state.consult.url;
-    document.getElementById('consult-btn-text').value = state.consult.btnText;
-    document.getElementById('adminOverlay').classList.add('active');
-    renderAdminLectures();
-    renderAdminAI();
+  const PW_KEY = 'yanyi_admin_pw';
+  const DEFAULT_PW = 'admin1234';
+
+  function getStoredPw() {
+    return localStorage.getItem(PW_KEY) || DEFAULT_PW;
   }
+
+  function openAdmin() {
+    document.getElementById('pw-input').value = '';
+    document.getElementById('pw-err').textContent = '';
+    document.getElementById('pw-input').classList.remove('error');
+    document.getElementById('pwOverlay').classList.add('active');
+    setTimeout(() => document.getElementById('pw-input').focus(), 100);
+  }
+
+  function closePwOverlay() {
+    document.getElementById('pwOverlay').classList.remove('active');
+  }
+
+  function togglePwVis() {
+    const inp = document.getElementById('pw-input');
+    inp.type = inp.type === 'password' ? 'text' : 'password';
+  }
+
+  function submitPw() {
+    const val = document.getElementById('pw-input').value;
+    if (val === getStoredPw()) {
+      closePwOverlay();
+      document.getElementById('consult-text').value = state.consult.text;
+      document.getElementById('consult-url').value = state.consult.url;
+      document.getElementById('consult-btn-text').value = state.consult.btnText;
+      document.getElementById('adminOverlay').classList.add('active');
+      renderAdminLectures();
+      renderAdminAI();
+    } else {
+      const inp = document.getElementById('pw-input');
+      inp.classList.add('error');
+      document.getElementById('pw-err').textContent = '密碼錯誤，請再試一次';
+      setTimeout(() => inp.classList.remove('error'), 600);
+    }
+  }
+
+  function changePw() {
+    const old = document.getElementById('pw-old').value;
+    const n1 = document.getElementById('pw-new1').value;
+    const n2 = document.getElementById('pw-new2').value;
+    const errEl = document.getElementById('pw-change-err');
+    if (old !== getStoredPw()) { errEl.textContent = '目前密碼不正確'; return; }
+    if (n1.length < 6) { errEl.textContent = '新密碼至少需要 6 個字元'; return; }
+    if (n1 !== n2) { errEl.textContent = '兩次輸入的密碼不一致'; return; }
+    localStorage.setItem(PW_KEY, n1);
+    errEl.textContent = '';
+    ['pw-old','pw-new1','pw-new2'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('pw-change-details').removeAttribute('open');
+    alert('密碼已成功變更！');
+  }
+
+  document.getElementById('pwOverlay').addEventListener('click', function(e) {
+    if (e.target === this) closePwOverlay();
+  });
 
   function closeAdmin() {
     document.getElementById('adminOverlay').classList.remove('active');
