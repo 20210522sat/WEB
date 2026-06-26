@@ -8,16 +8,14 @@
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import {
-  getDatabase, ref, set, push, update, remove, onValue, get
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
-
-// ── 提前初始化 window._S，確保 onValue 回呼觸發時已存在 ──
+<!-- Firebase compat SDK：同步載入，不用 ES module，避免 type="module" 非同步問題 -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script>
+// ══ 第一步：先建好 window._S，之後任何回呼都安全 ═══════════════════════════
 window._S = {
   tab:'reserve', isAdmin:false,
-  weekStart:null,  // 由同步 JS 設定
+  weekStart:null,
   modal:null, pickedComp:null,
   form:{ dept:'', name:'', phone:'', ext:'', note:'', _dur:1 },
   bookings:[], closedDates:new Set(), blacklist:new Map(), absCount:{},
@@ -26,6 +24,7 @@ window._S = {
 };
 window._appReady = false;
 
+// ══ 第二步：初始化 Firebase ═══════════════════════════════════════════════════
 const firebaseConfig = {
   apiKey: "AIzaSyA5aw1b8kV_aADZkGr6U_aobftl-uolxbw",
   authDomain: "pcbooking-d2b7b.firebaseapp.com",
@@ -35,76 +34,65 @@ const firebaseConfig = {
   messagingSenderId: "19266335042",
   appId: "1:19266335042:web:8b55414c1ab4b61e8ad8db"
 };
+firebase.initializeApp(firebaseConfig);
+const _db = firebase.database();
 
-const app  = initializeApp(firebaseConfig);
-const db   = getDatabase(app);
+// ══ Firebase helpers ══════════════════════════════════════════════════════════
+function _safeKey(phone){ return phone.replace(/[.#$[\]]/g,'_'); }
 
-// ── Firebase helpers (掛到 window 供同步 JS 使用) ──────────────────────────
-window._fbReady = false;
-
-// 新增預約 → push 回傳 key
-window._fbAddBooking = async (data) => {
-  const r = push(ref(db, 'bookings'));
-  await set(r, data);
-  return r.key;
+window._fbAddBooking = function(data){
+  var r = _db.ref('bookings').push();
+  return r.set(data).then(function(){ return r.key; });
 };
-// 更新預約欄位
-window._fbUpdateBooking = async (id, patch) => {
-  await update(ref(db, `bookings/${id}`), patch);
+window._fbUpdateBooking = function(id, patch){
+  return _db.ref('bookings/'+id).update(patch);
 };
-// 休館日
-window._fbAddClosed = async (date) => {
-  await set(ref(db, `closedDates/${date}`), true);
+window._fbAddClosed = function(date){
+  return _db.ref('closedDates/'+date).set(true);
 };
-window._fbDelClosed = async (date) => {
-  await remove(ref(db, `closedDates/${date}`));
+window._fbDelClosed = function(date){
+  return _db.ref('closedDates/'+date).remove();
 };
-// 黑名單
-window._fbAddBlacklist = async (phone, info) => {
-  const key = phone.replace(/[.#$[\]/]/g, '_');
-  await set(ref(db, `blacklist/${key}`), { phone, ...info });
+window._fbAddBlacklist = function(phone, info){
+  return _db.ref('blacklist/'+_safeKey(phone)).set(Object.assign({phone:phone}, info));
 };
-window._fbDelBlacklist = async (phone) => {
-  const key = phone.replace(/[.#$[\]/]/g, '_');
-  await remove(ref(db, `blacklist/${key}`));
+window._fbDelBlacklist = function(phone){
+  return _db.ref('blacklist/'+_safeKey(phone)).remove();
 };
-// 未到計數
-window._fbUpdateAbs = async (phone, count) => {
-  const key = phone.replace(/[.#$[\]/]/g, '_');
-  await set(ref(db, `absCount/${key}`), { phone, count });
+window._fbUpdateAbs = function(phone, count){
+  return _db.ref('absCount/'+_safeKey(phone)).set({phone:phone, count:count});
 };
 
-// ── 即時監聽 → 有任何人新增/修改預約，所有人畫面同步更新 ─────────────────
-onValue(ref(db, 'bookings'), snap => {
-  const data = snap.val() || {};
-  window._S.bookings = Object.entries(data).map(([id, v]) => ({ id, ...v }));
-  if (window._appReady) renderMain();
+// ══ 即時監聽 ═════════════════════════════════════════════════════════════════
+_db.ref('bookings').on('value', function(snap){
+  var data = snap.val() || {};
+  window._S.bookings = Object.entries(data).map(function(e){ return Object.assign({id:e[0]}, e[1]); });
+  if(window._appReady) renderMain();
 });
-onValue(ref(db, 'closedDates'), snap => {
-  const data = snap.val() || {};
+_db.ref('closedDates').on('value', function(snap){
+  var data = snap.val() || {};
   window._S.closedDates = new Set(Object.keys(data));
-  if (window._appReady) renderMain();
+  if(window._appReady) renderMain();
 });
-onValue(ref(db, 'blacklist'), snap => {
-  const data = snap.val() || {};
+_db.ref('blacklist').on('value', function(snap){
+  var data = snap.val() || {};
   window._S.blacklist = new Map(
-    Object.values(data).map(v => [v.phone, v])
+    Object.values(data).filter(function(v){ return v && v.phone; }).map(function(v){ return [v.phone, v]; })
   );
-  if (window._appReady) renderMain();
+  if(window._appReady) renderMain();
 });
-onValue(ref(db, 'absCount'), snap => {
-  const data = snap.val() || {};
+_db.ref('absCount').on('value', function(snap){
+  var data = snap.val() || {};
   window._S.absCount = {};
-  Object.values(data).forEach(v => { window._S.absCount[v.phone] = v.count; });
+  Object.values(data).forEach(function(v){ if(v && v.phone) window._S.absCount[v.phone] = v.count; });
 });
 
-// 等三個主要節點都收到初始值後才啟動 App
-let _loaded = 0;
-function _checkReady() { if (++_loaded >= 3) startApp(); }
-onValue(ref(db, 'bookings'),    () => _checkReady(), { onlyOnce: true });
-onValue(ref(db, 'closedDates'), () => _checkReady(), { onlyOnce: true });
-onValue(ref(db, 'blacklist'),   () => _checkReady(), { onlyOnce: true });
-
+// ══ 等三個節點都收到初始值後啟動 App ══════════════════════════════════════════
+var _loaded = 0;
+function _checkReady(){ if(++_loaded >= 3) startApp(); }
+_db.ref('bookings').once('value',    function(){ _checkReady(); });
+_db.ref('closedDates').once('value', function(){ _checkReady(); });
+_db.ref('blacklist').once('value',   function(){ _checkReady(); });
 </script>
 
 <style>
