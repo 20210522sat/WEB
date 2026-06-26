@@ -1,541 +1,1030 @@
-
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>電腦使用預約系統</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
+<title>電腦預約系統</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import {
+  getDatabase, ref, set, push, update, remove, onValue, get
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyA5aw1b8kV_aADZkGr6U_aobftl-uolxbw",
+  authDomain: "pcbooking-d2b7b.firebaseapp.com",
+  databaseURL: "https://pcbooking-d2b7b-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "pcbooking-d2b7b",
+  storageBucket: "pcbooking-d2b7b.firebasestorage.app",
+  messagingSenderId: "19266335042",
+  appId: "1:19266335042:web:8b55414c1ab4b61e8ad8db"
+};
+
+const app  = initializeApp(firebaseConfig);
+const db   = getDatabase(app);
+
+// ── Firebase helpers (掛到 window 供同步 JS 使用) ──────────────────────────
+window._fbReady = false;
+
+// 新增預約 → push 回傳 key
+window._fbAddBooking = async (data) => {
+  const r = push(ref(db, 'bookings'));
+  await set(r, data);
+  return r.key;
+};
+// 更新預約欄位
+window._fbUpdateBooking = async (id, patch) => {
+  await update(ref(db, `bookings/${id}`), patch);
+};
+// 休館日
+window._fbAddClosed = async (date) => {
+  await set(ref(db, `closedDates/${date}`), true);
+};
+window._fbDelClosed = async (date) => {
+  await remove(ref(db, `closedDates/${date}`));
+};
+// 黑名單
+window._fbAddBlacklist = async (phone, info) => {
+  const key = phone.replace(/[.#$[\]/]/g, '_');
+  await set(ref(db, `blacklist/${key}`), { phone, ...info });
+};
+window._fbDelBlacklist = async (phone) => {
+  const key = phone.replace(/[.#$[\]/]/g, '_');
+  await remove(ref(db, `blacklist/${key}`));
+};
+// 未到計數
+window._fbUpdateAbs = async (phone, count) => {
+  const key = phone.replace(/[.#$[\]/]/g, '_');
+  await set(ref(db, `absCount/${key}`), { phone, count });
+};
+
+// ── 即時監聽 → 有任何人新增/修改預約，所有人畫面同步更新 ─────────────────
+onValue(ref(db, 'bookings'), snap => {
+  const data = snap.val() || {};
+  window._S.bookings = Object.entries(data).map(([id, v]) => ({ id, ...v }));
+  if (window._appReady) renderMain();
+});
+onValue(ref(db, 'closedDates'), snap => {
+  const data = snap.val() || {};
+  window._S.closedDates = new Set(Object.keys(data));
+  if (window._appReady) renderMain();
+});
+onValue(ref(db, 'blacklist'), snap => {
+  const data = snap.val() || {};
+  window._S.blacklist = new Map(
+    Object.values(data).map(v => [v.phone, v])
+  );
+  if (window._appReady) renderMain();
+});
+onValue(ref(db, 'absCount'), snap => {
+  const data = snap.val() || {};
+  window._S.absCount = {};
+  Object.values(data).forEach(v => { window._S.absCount[v.phone] = v.count; });
+});
+
+// 等三個主要節點都收到初始值後才啟動 App
+let _loaded = 0;
+function _checkReady() { if (++_loaded >= 3) startApp(); }
+onValue(ref(db, 'bookings'),    () => _checkReady(), { onlyOnce: true });
+onValue(ref(db, 'closedDates'), () => _checkReady(), { onlyOnce: true });
+onValue(ref(db, 'blacklist'),   () => _checkReady(), { onlyOnce: true });
+
+</script>
+
 <style>
+:root{
+  --teal:#2F4F4F;--teal-lt:#eaf1f1;--teal-md:#b0c8c8;
+  --amber:#BC7527;--amber-lt:#fef5e6;--amber-md:#f0d49a;
+  --gold:#DAA520;--gold-lt:#fefae8;
+  --green:#018948;--green-lt:#e8f5ee;--green-md:#9fd8bc;
+  --red:#a42a2b;--red-lt:#fdf0f0;--red-md:#f5c6c6;
+  --bg:#f7f8f6;--white:#ffffff;
+  --border:rgba(47,79,79,0.13);--border-md:rgba(47,79,79,0.22);
+  --text:#1a2424;--text-sub:#3d5555;--text-muted:#7a9090;
+  --radius:10px;
+}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f5f5f3;min-height:100vh;padding:1.5rem}
-.container{max-width:960px;margin:0 auto;background:#fff;border-radius:12px;border:0.5px solid rgba(0,0,0,0.1);padding:1.5rem}
-button,input{font-family:inherit}
-.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
-.top-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:10px}
-.title-row{display:flex;align-items:center;gap:10px}
-.title{font-size:18px;font-weight:500;color:#1a1a1a}
-.badge{font-size:12px;background:#f1efe8;color:#5f5e5a;border:0.5px solid rgba(0,0,0,0.1);border-radius:8px;padding:2px 8px}
-.btn-export{display:flex;align-items:center;gap:5px;font-size:13px;padding:6px 14px;background:#eaf3de;color:#3b6d11;border:0.5px solid #97c459;border-radius:8px;cursor:pointer}
-.btn-export:hover{background:#c0dd97}
-.btn-export:disabled{opacity:0.5;cursor:not-allowed}
-.nav-row{display:flex;align-items:center;gap:8px;margin-bottom:1rem;flex-wrap:wrap}
-.btn-today{font-size:12px;padding:5px 10px;border:0.5px solid rgba(0,0,0,0.2);border-radius:8px;background:transparent;color:#5f5e5a;cursor:pointer}
-.btn-today:hover{background:#f1efe8}
-.btn-nav{font-size:15px;padding:4px 10px;border:0.5px solid rgba(0,0,0,0.2);border-radius:8px;background:transparent;color:#1a1a1a;cursor:pointer;line-height:1;user-select:none}
-.btn-nav:hover{background:#f1efe8}
-.week-label{font-size:13px;font-weight:500;color:#1a1a1a;min-width:152px;text-align:center}
-.legend{margin-left:auto;display:flex;gap:12px;font-size:11px;color:#5f5e5a}
-.leg{display:flex;align-items:center;gap:4px}
-.leg-dot{display:inline-block;width:10px;height:10px;border-radius:2px}
-.grid-wrap{overflow-x:auto}
-.cal-grid{display:grid;grid-template-columns:52px repeat(7,minmax(0,1fr));border:0.5px solid rgba(0,0,0,0.1);border-radius:12px;overflow:hidden}
-.hdr-time{background:#f5f5f3;border-bottom:0.5px solid rgba(0,0,0,0.1);border-right:0.5px solid rgba(0,0,0,0.1);padding:6px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:13px}
-.hdr-day{padding:4px;text-align:center;border-bottom:0.5px solid rgba(0,0,0,0.1)}
-.hdr-day.weekend{background:#f5f5f3}
-.hdr-day.today{background:#e6f1fb}
-.hdr-day .dow{font-size:10px;color:#5f5e5a}
-.hdr-day .date{font-size:12px;color:#1a1a1a}
-.hdr-day.weekend .dow,.hdr-day.weekend .date{color:#bbb}
-.hdr-day.today .dow{color:#185fa5}
-.hdr-day.today .date{color:#0c447c;font-weight:500}
-.time-cell{background:#f5f5f3;border-right:0.5px solid rgba(0,0,0,0.1);padding:0 4px;display:flex;align-items:center;justify-content:flex-end;min-height:36px;font-size:10px;color:#bbb;white-space:nowrap}
-.slot-cell{min-height:36px;padding:2px}
-.slot-cell.weekend{background:#f5f5f3;padding:0}
-.slot-weekend-fill{height:100%;min-height:36px;display:flex;align-items:center;justify-content:center}
-.slot-booked{background:#e6f1fb;border:0.5px solid #85b7eb;border-radius:3px;padding:3px 4px;cursor:pointer;height:100%;box-sizing:border-box}
-.slot-booked .bname{font-size:10px;font-weight:500;color:#0c447c;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.slot-booked .bdept{font-size:9px;color:#185fa5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.slot-cont{background:#e6f1fb;border-left:2px solid #85b7eb;height:100%;box-sizing:border-box;cursor:pointer;opacity:0.5}
-.slot-past{height:100%;display:flex;align-items:center;justify-content:center;font-size:10px;color:#bbb}
-.slot-free{width:100%;height:100%;min-height:36px;background:transparent;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:11px;color:transparent;transition:background 0.1s,color 0.1s}
-.slot-free:hover{background:#f5f5f3;color:#bbb}
-.loading-overlay{position:absolute;inset:0;background:rgba(255,255,255,0.75);display:flex;align-items:center;justify-content:center;z-index:10;border-radius:12px;font-size:13px;color:#5f5e5a}
-.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.38);z-index:50;align-items:center;justify-content:center}
-.modal-bg.open{display:flex}
-.modal{background:#fff;border:0.5px solid rgba(0,0,0,0.1);border-radius:12px;padding:1.25rem 1.5rem;width:min(380px,90vw);max-height:90vh;overflow-y:auto}
-.modal-title{font-size:15px;font-weight:500;color:#1a1a1a;margin-bottom:2px}
-.modal-sub{font-size:12px;color:#5f5e5a;margin-bottom:1rem}
-.field{margin-bottom:10px}
-.field label{display:block;font-size:12px;color:#5f5e5a;margin-bottom:3px}
-.field input{width:100%;font-size:13px;padding:6px 10px;border:0.5px solid rgba(0,0,0,0.2);border-radius:8px;background:#fff;color:#1a1a1a}
-.field input:focus{outline:none;box-shadow:0 0 0 2px #85b7eb}
-.field input.err{border-color:#e24b4a}
-.errmsg{font-size:11px;color:#a32d2d;margin-top:2px}
-.dur-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-top:5px}
-.dur-btn{padding:6px 3px;font-size:11px;border:0.5px solid rgba(0,0,0,0.2);border-radius:8px;background:transparent;color:#1a1a1a;cursor:pointer}
-.dur-btn.active{background:#e6f1fb;border-color:#85b7eb;color:#0c447c;font-weight:500}
-.dur-btn:disabled{opacity:0.3;cursor:not-allowed}
-.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:1rem}
-.btn-cancel{padding:7px 14px;font-size:13px;background:transparent;border:0.5px solid rgba(0,0,0,0.2);border-radius:8px;color:#5f5e5a;cursor:pointer}
-.btn-cancel:hover{background:#f5f5f3}
-.btn-confirm{padding:7px 18px;font-size:13px;background:#185fa5;border:none;border-radius:8px;color:#fff;font-weight:500;cursor:pointer}
-.btn-confirm:hover{background:#0c447c}
-.btn-confirm:disabled{opacity:0.5;cursor:not-allowed}
-.btn-del{padding:7px 14px;font-size:13px;background:transparent;border:0.5px solid #e24b4a;border-radius:8px;color:#a32d2d;cursor:pointer}
-.btn-del:hover{background:#fcebeb}
-.btn-del:disabled{opacity:0.5;cursor:not-allowed}
-.detail-row{display:flex;gap:8px;margin-bottom:7px;font-size:13px}
-.detail-lab{color:#5f5e5a;width:55px;flex-shrink:0}
-.detail-val{color:#1a1a1a;font-weight:500}
-.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);padding:9px 18px;border-radius:8px;font-size:13px;white-space:nowrap;opacity:0;transition:opacity 0.3s;pointer-events:none;z-index:200}
-.toast.show{opacity:1}
-.toast.success{background:#0c447c;color:#fff}
-.toast.error{background:#a32d2d;color:#fff}
-.conn-status{display:flex;align-items:center;gap:4px;font-size:11px;padding:2px 8px;border-radius:8px}
-.conn-status.ok{background:#eaf3de;color:#3b6d11}
-.conn-status.fail{background:#fcebeb;color:#a32d2d}
-.conn-status.loading{background:#f1efe8;color:#5f5e5a}
+body{font-family:'Noto Sans TC','system-ui',sans-serif;background:var(--bg);color:var(--text);font-size:16px;line-height:1.6;min-height:100vh}
+
+/* TOP BAR */
+.topbar{background:var(--teal);padding:0 28px;display:flex;align-items:center;justify-content:space-between;height:64px;position:sticky;top:0;z-index:200;gap:16px;box-shadow:0 2px 10px rgba(47,79,79,0.22)}
+.logo{font-size:19px;font-weight:700;display:flex;align-items:center;gap:10px;color:#fff;white-space:nowrap}
+.logo-icon{width:34px;height:34px;background:var(--gold);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--teal);font-size:16px;font-weight:700;flex-shrink:0}
+.nav-tabs{display:flex;gap:4px}
+.nav-tab{padding:8px 22px;border-radius:8px;border:none;background:transparent;cursor:pointer;font-size:15px;font-family:inherit;color:rgba(255,255,255,0.78);font-weight:500;transition:all .13s}
+.nav-tab:hover{background:rgba(255,255,255,0.13);color:#fff}
+.nav-tab.active{background:var(--gold);color:var(--teal);font-weight:700}
+
+/* LAYOUT */
+.main{padding:24px 28px;max-width:1340px;margin:0 auto;width:100%}
+.card{background:var(--white);border:1px solid var(--border);border-radius:14px;padding:24px 26px}
+
+/* GRID */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+
+/* FORM */
+label{font-size:14px;color:var(--text-sub);display:block;margin-bottom:5px;font-weight:600}
+input,select,textarea{width:100%;padding:10px 14px;border:1px solid var(--border-md);border-radius:var(--radius);font-size:16px;font-family:inherit;background:#fff;color:var(--text);outline:none;transition:border .12s}
+input:focus,select:focus,textarea:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(47,79,79,0.10)}
+.field{margin-bottom:14px}
+
+/* BUTTONS */
+.btn{padding:9px 20px;border-radius:8px;border:1px solid var(--border-md);background:transparent;cursor:pointer;font-size:15px;font-family:inherit;font-weight:500;color:var(--text);display:inline-flex;align-items:center;gap:6px;transition:all .12s;white-space:nowrap}
+.btn:hover{background:var(--bg)}
+.btn-primary{background:var(--teal);color:#fff;border-color:var(--teal)}.btn-primary:hover{background:#1d3535}
+.btn-gold{background:var(--gold);color:var(--teal);border-color:var(--gold);font-weight:700}.btn-gold:hover{background:#b8920f}
+.btn-amber{background:var(--amber);color:#fff;border-color:var(--amber)}.btn-amber:hover{background:#9a5e1e}
+.btn-green{background:var(--green);color:#fff;border-color:var(--green)}.btn-green:hover{background:#016a38}
+.btn-red{background:var(--red);color:#fff;border-color:var(--red)}.btn-red:hover{background:#8a2122}
+.btn-danger{background:#c0392b;color:#fff;border-color:#c0392b}.btn-danger:hover{background:#962d22}
+.btn-sm{padding:6px 14px;font-size:14px}
+.btn-xs{padding:3px 10px;font-size:13px}
+
+/* BADGES */
+.badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-size:13px;font-weight:600}
+.badge-teal{background:var(--teal-lt);color:var(--teal)}
+.badge-green{background:var(--green-lt);color:#016a38}
+.badge-amber{background:var(--amber-lt);color:#7a4d14}
+.badge-red{background:var(--red-lt);color:var(--red)}
+.badge-gray{background:#f0f0ee;color:#555}
+.badge-gold{background:var(--gold-lt);color:#7a5a00}
+
+/* WEEK GRID */
+.week-header{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.week-label{font-size:16px;font-weight:700;min-width:220px;text-align:center;color:var(--teal)}
+.week-grid-wrap{overflow-x:auto}
+.week-grid{border-collapse:collapse;width:100%;min-width:820px}
+.week-grid th{padding:13px 8px;font-size:15px;font-weight:700;color:var(--text-sub);border:1px solid var(--border);background:#f4f7f4;text-align:center}
+.week-grid th.today-h{background:var(--teal-lt);color:var(--teal)}
+.week-grid td{border:1px solid var(--border);vertical-align:middle;padding:0}
+
+/* TIME CELL — 置中 */
+.time-cell{font-size:14px;color:var(--text-muted);padding:0;text-align:center;background:#f4f7f4;border-right:1px solid var(--border);width:66px;white-space:nowrap;font-weight:600;height:88px;vertical-align:middle}
+/* SLOT CELL — 2× 高 */
+.slot-cell{padding:4px;min-height:88px;height:88px;cursor:pointer;transition:background .1s;vertical-align:top}
+.slot-cell:hover{background:#f0f5f0}
+.slot-cell.closed-cell{background:#fafaf8;cursor:default}
+.slot-cell.past-cell{background:#fafaf8;cursor:default;opacity:.5}
+
+/* BOOKING CHIPS */
+.booking-chip{border-radius:7px;padding:5px 7px;font-size:13px;line-height:1.4;margin:2px;overflow:hidden}
+.chip-c1{background:var(--teal-lt);border-left:4px solid var(--teal);color:#1d3535}
+.chip-c2{background:var(--green-lt);border-left:4px solid var(--green);color:#015a30}
+.chip-c3{background:var(--amber-lt);border-left:4px solid var(--amber);color:#7a4d14}
+.chip-c4{background:var(--gold-lt);border-left:4px solid var(--gold);color:#7a5a00}
+.chip-name{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip-sub{opacity:.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+.slot-add{font-size:13px;color:var(--text-muted);text-align:center;height:100%;display:flex;align-items:center;justify-content:center;opacity:.45}
+
+/* COMP LEGEND */
+.comp-legend{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:14px}
+.comp-dot{width:13px;height:13px;border-radius:4px;flex-shrink:0}
+
+/* MODAL */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.42);z-index:400;display:flex;align-items:center;justify-content:center;padding:20px}
+.modal{background:#fff;border-radius:16px;padding:30px;width:480px;max-width:96vw;max-height:92vh;overflow-y:auto}
+.modal-title{font-size:18px;font-weight:700;margin-bottom:20px;color:var(--teal)}
+
+/* ADMIN TABLE */
+.table-wrap{overflow-x:auto}
+table.dtable{width:100%;border-collapse:collapse;font-size:15px}
+table.dtable th{text-align:left;padding:11px 14px;border-bottom:2px solid var(--teal-md);font-size:14px;color:var(--text-sub);font-weight:700;background:#f4f7f4;white-space:nowrap}
+table.dtable td{padding:11px 14px;border-bottom:1px solid var(--border);vertical-align:middle}
+table.dtable tr:last-child td{border-bottom:none}
+table.dtable tr:hover td{background:#f7faf7}
+
+/* STATS */
+.stat-card{background:var(--white);border:1px solid var(--border);border-radius:12px;padding:20px 22px}
+.stat-label{font-size:14px;color:var(--text-sub);margin-bottom:6px;font-weight:600}
+.stat-value{font-size:28px;font-weight:700}
+.bar-row{display:flex;align-items:center;gap:10px;margin-bottom:9px}
+.bar-label{width:66px;text-align:right;font-size:14px;color:var(--text-sub);flex-shrink:0;font-weight:600}
+.bar-track{flex:1;background:#e8eeee;border-radius:4px;height:18px;overflow:hidden}
+.bar-fill{height:100%;border-radius:4px;transition:width .5s}
+.bar-val{width:44px;font-size:13px;color:var(--text-muted)}
+
+/* UTIL */
+.flex{display:flex}.items-center{align-items:center}.justify-between{justify-content:space-between}
+.gap-6{gap:6px}.gap-8{gap:8px}.gap-12{gap:12px}
+.mt-8{margin-top:8px}.mt-12{margin-top:12px}.mt-16{margin-top:16px}
+.mb-8{margin-bottom:8px}.mb-12{margin-bottom:12px}.mb-16{margin-bottom:16px}
+.text-muted{color:var(--text-muted)}.w-full{width:100%}
+.section-title{font-size:17px;font-weight:700;margin-bottom:16px;color:var(--teal)}
+.divider{border:none;border-top:1px solid var(--border);margin:16px 0}
+.blacklist-item{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border)}
+.blacklist-item:last-child{border-bottom:none}
+.row-actions{display:flex;gap:5px;flex-wrap:wrap}
+
+/* TOAST */
+.toast{position:fixed;bottom:24px;right:24px;background:var(--teal);color:#fff;padding:12px 22px;border-radius:10px;font-size:15px;font-family:inherit;z-index:9999;display:none;max-width:380px;font-weight:500;box-shadow:0 4px 16px rgba(47,79,79,0.25)}
+.toast.show{display:block}
+
+/* LOADING */
+#loading-screen{position:fixed;inset:0;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;gap:18px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spinner{width:42px;height:42px;border:4px solid var(--teal-md);border-top-color:var(--teal);border-radius:50%;animation:spin .8s linear infinite}
 </style>
 </head>
 <body>
-<div class="container" style="position:relative">
-  <div class="loading-overlay" id="main-loading">
-    <i class="ti ti-loader" style="font-size:18px;margin-right:6px"></i>連線資料庫中...
-  </div>
-  <h1 class="sr-only">電腦使用預約系統</h1>
-  <div class="top-bar">
-    <div class="title-row">
-      <i class="ti ti-device-desktop" style="font-size:18px;color:#1a1a1a"></i>
-      <span class="title">電腦使用預約</span>
-      <span class="badge" id="total-badge">—</span>
-      <span class="conn-status loading" id="conn-status">
-        <i class="ti ti-circle" style="font-size:10px"></i> 連線中
-      </span>
-    </div>
-    <button class="btn-export" id="btn-export" onclick="exportExcel()" disabled>
-      <i class="ti ti-table-export" style="font-size:14px"></i>匯出 Excel
-    </button>
-  </div>
 
-  <div class="nav-row">
-    <button class="btn-today" onclick="goToday()">本週</button>
-    <button class="btn-nav" onclick="changeWeek(-1)" aria-label="上一週">&#9664;</button>
-    <span class="week-label" id="week-label"></span>
-    <button class="btn-nav" onclick="changeWeek(1)" aria-label="下一週">&#9654;</button>
-    <div class="legend">
-      <div class="leg"><span class="leg-dot" style="background:#e6f1fb;border:0.5px solid #85b7eb"></span>已預約</div>
-      <div class="leg"><span class="leg-dot" style="background:#f5f5f3;border:0.5px solid rgba(0,0,0,0.1)"></span>假日</div>
-    </div>
-  </div>
-
-  <div class="grid-wrap">
-    <div class="cal-grid" id="cal-grid" style="min-width:560px"></div>
-  </div>
+<div id="loading-screen">
+  <div class="spinner"></div>
+  <div style="font-family:'Noto Sans TC',sans-serif;color:var(--teal);font-weight:700;font-size:17px">連接資料庫中…</div>
 </div>
 
-<!-- 預約 Modal -->
-<div class="modal-bg" id="book-modal">
+<div id="app" style="display:none">
+  <div class="topbar">
+    <div class="logo">
+      <div class="logo-icon">電</div>
+      電腦預約系統
+    </div>
+    <div class="nav-tabs">
+      <button class="nav-tab active" id="tab-reserve" onclick="showTab('reserve')">預約</button>
+      <button class="nav-tab" id="tab-admin"   onclick="showTab('admin')">管理後台</button>
+      <button class="nav-tab" id="tab-report"  onclick="showTab('report')">統計報表</button>
+    </div>
+  </div>
+  <div class="main" id="main"></div>
+</div>
+
+<div class="toast"   id="toast"></div>
+<div id="modal-area"></div>
+
+<script>
+// ── CONFIG ────────────────────────────────────────────────────────────────────
+const COMPUTERS    = [1,2,3,4];
+const OPEN = 9, CLOSE = 17, MAX_SLOTS = 8;
+const ADMIN_PASS   = 'admin1234';           // ★ 改成你的密碼
+const COMP_COLORS  = ['#2F4F4F','#018948','#BC7527','#DAA520'];
+const CHIP_CLS     = ['chip-c1','chip-c2','chip-c3','chip-c4'];
+
+// 台灣國定假日 2025–2027（含彈性放假）
+const TW_HOLIDAYS  = new Set([
+  '2025-01-01','2025-01-27','2025-01-28','2025-01-29','2025-01-30','2025-01-31',
+  '2025-02-28','2025-04-04','2025-04-05','2025-04-06',
+  '2025-05-01','2025-05-30','2025-05-31','2025-06-07','2025-06-08',
+  '2025-09-29','2025-10-10',
+  '2026-01-01','2026-01-26','2026-02-16','2026-02-17','2026-02-18',
+  '2026-02-19','2026-02-20','2026-02-28',
+  '2026-04-04','2026-04-05','2026-04-06','2026-04-30','2026-05-01',
+  '2026-06-19','2026-06-20','2026-09-24','2026-09-25','2026-10-09','2026-10-10',
+  '2027-01-01','2027-02-05','2027-02-06','2027-02-07',
+  '2027-02-08','2027-02-09','2027-02-28',
+  '2027-04-03','2027-04-04','2027-04-05',
+  '2027-05-01','2027-06-09','2027-10-01','2027-10-10'
+]);
+
+function genSlots(){
+  const s=[];
+  for(let h=OPEN;h<CLOSE;h++){
+    s.push(`${String(h).padStart(2,'0')}:00`);
+    s.push(`${String(h).padStart(2,'0')}:30`);
+  }
+  return s;
+}
+const SLOTS = genSlots();
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+window._S = {
+  tab:'reserve', isAdmin:false,
+  weekStart: getMonday(new Date()),
+  modal:null, pickedComp:null,
+  form:{ dept:'', name:'', phone:'', ext:'', _dur:1 },
+  bookings:[], closedDates:new Set(), blacklist:new Map(), absCount:{},
+  adminTab:'bookings', adminFilter:{ date:'', computer:'', status:'' },
+  rFrom:'', rTo:'', qPhone:'', qResult:null
+};
+const S = window._S;
+window._appReady = false;
+
+// ── DATE UTILS ────────────────────────────────────────────────────────────────
+function today(){ return new Date().toISOString().slice(0,10); }
+function toStr(d){ return d.toISOString().slice(0,10); }
+function getMonday(d){
+  const dd=new Date(d); const day=dd.getDay();
+  dd.setDate(dd.getDate()-day+(day===0?-6:1)); return dd;
+}
+function addDays(d,n){ const dd=new Date(d); dd.setDate(dd.getDate()+n); return dd; }
+function fDate(s){ if(!s)return''; const[y,m,d]=s.split('-'); return`${y}/${m}/${d}`; }
+function fShort(s){ if(!s)return''; const[,m,d]=s.split('-'); return`${m}/${d}`; }
+function wdName(d){ return['日','一','二','三','四','五','六'][new Date(d+'T12:00').getDay()]; }
+function isWeekend(s){ const w=new Date(s+'T12:00').getDay(); return w===0||w===6; }
+function isHoliday(s){ return TW_HOLIDAYS.has(s); }
+function isClosed(s){ return S.closedDates.has(s)||isWeekend(s)||isHoliday(s); }
+function isPastDate(s){ return s < today(); }
+function slotMin(s){ const[h,m]=s.split(':').map(Number); return h*60+m; }
+function endTime(slots){
+  const so=[...slots].sort();
+  const em=slotMin(so[so.length-1])+30;
+  return`${String(Math.floor(em/60)).padStart(2,'0')}:${String(em%60).padStart(2,'0')}`;
+}
+function closeModal(){ document.getElementById('modal-area').innerHTML=''; S.modal=null; S.pickedComp=null; }
+function toast(msg,ms=2800){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(t._tid);
+  t._tid=setTimeout(()=>t.classList.remove('show'),ms);
+}
+
+// ── BOOKING HELPERS ───────────────────────────────────────────────────────────
+function dayCompBks(date,comp){
+  return S.bookings.filter(b=>b.date===date&&b.computer===comp&&b.status!=='cancelled');
+}
+function bookedSet(date,comp){
+  const s=new Set();
+  dayCompBks(date,comp).forEach(b=>b.slots.forEach(sl=>s.add(sl)));
+  return s;
+}
+function getSlotBk(date,comp,slot){
+  return dayCompBks(date,comp).find(b=>b.slots.includes(slot));
+}
+
+// ── TAB ───────────────────────────────────────────────────────────────────────
+function renderMain(){
+  document.getElementById('main').innerHTML=
+    S.tab==='reserve' ? renderReserve() :
+    S.tab==='admin'   ? renderAdmin()   : renderReport();
+}
+function showTab(t){
+  if(t==='admin'&&!S.isAdmin){ showLoginModal(); return; }
+  S.tab=t;
+  ['reserve','admin','report'].forEach(k=>
+    document.getElementById('tab-'+k).classList.toggle('active',k===t));
+  renderMain();
+}
+
+// ── WEEK VIEW ─────────────────────────────────────────────────────────────────
+function weekDays(){ return Array.from({length:5},(_,i)=>toStr(addDays(S.weekStart,i))); }
+
+function renderReserve(){
+  const days=weekDays();
+  const todayStr=today();
+  const ws=toStr(S.weekStart);
+  const we=toStr(addDays(S.weekStart,4));
+
+  // legend
+  let legend=`<div class="comp-legend">`;
+  COMPUTERS.forEach(c=>legend+=
+    `<div class="flex items-center gap-6">
+      <div class="comp-dot" style="background:${COMP_COLORS[c-1]}"></div>
+      <span style="font-size:15px;font-weight:600">電腦 ${c}</span>
+    </div>`);
+  legend+=`</div>`;
+
+  let html=`<div class="card">
+  <div class="week-header">
+    <div class="flex items-center gap-8">
+      <button class="btn btn-sm" onclick="weekNav(-1)">‹ 上週</button>
+      <span class="week-label">${fDate(ws)} – ${fDate(we)}</span>
+      <button class="btn btn-sm" onclick="weekNav(1)">下週 ›</button>
+      <button class="btn btn-sm btn-primary" onclick="jumpToday()">本週</button>
+    </div>
+    <div class="flex items-center gap-8" style="margin-left:auto">
+      <label style="margin:0;white-space:nowrap">跳至日期</label>
+      <input type="date" style="width:170px" onchange="jumpToDate(this.value)">
+    </div>
+  </div>
+  ${legend}
+  <div class="week-grid-wrap">
+  <table class="week-grid">
+  <thead><tr><th style="width:66px">時段</th>`;
+
+  days.forEach(d=>{
+    const isToday = d===todayStr;
+    let sub='';
+    if(isHoliday(d))            sub=`<br><span class="badge badge-red"   style="font-size:12px">國定假日</span>`;
+    else if(S.closedDates.has(d)) sub=`<br><span class="badge badge-gray"  style="font-size:12px">休館</span>`;
+    else if(isWeekend(d))        sub=`<br><span class="badge badge-gray"  style="font-size:12px">週末</span>`;
+    html+=`<th${isToday?' class="today-h"':''}>${fShort(d)} (${wdName(d)})${sub}</th>`;
+  });
+  html+=`</tr></thead><tbody>`;
+
+  SLOTS.forEach(slot=>{
+    html+=`<tr><td class="time-cell">${slot}</td>`;
+    days.forEach(d=>{
+      const closed   = isClosed(d);
+      const pastDate = isPastDate(d);
+      const nowMin   = new Date().getHours()*60+new Date().getMinutes();
+      const pastSlot = d===todayStr && slotMin(slot)<nowMin;
+      const notAvail = closed||pastDate||pastSlot;
+
+      let chips='';
+      if(!notAvail){
+        COMPUTERS.forEach(c=>{
+          const bk=getSlotBk(d,c,slot);
+          if(bk && bk.slots[0]===slot){
+            chips+=`<div class="booking-chip ${CHIP_CLS[c-1]}"
+              title="電腦${c}｜${bk.dept}｜${bk.name}｜${bk.phone}${bk.ext?' #'+bk.ext:''}">
+              <div class="chip-name">C${c} ${bk.name}</div>
+              <div class="chip-sub">${bk.dept}${bk.ext?' #'+bk.ext:' '+bk.phone.slice(-4)}</div>
+            </div>`;
+          }
+        });
+        const allFull=COMPUTERS.every(c=>bookedSet(d,c).has(slot));
+        if(!allFull) chips+=`<div class="slot-add">＋ 點擊預約</div>`;
+      }
+
+      const cls   = notAvail ? `slot-cell ${closed?'closed-cell':'past-cell'}` : 'slot-cell';
+      const click = notAvail ? '' : ` onclick="openModal('${d}','${slot}')"`;
+      html+=`<td class="${cls}"${click}>${chips}</td>`;
+    });
+    html+=`</tr>`;
+  });
+  html+=`</tbody></table></div></div>
+
+  <div class="card" style="margin-top:16px">
+    <div class="section-title">查詢我的預約</div>
+    <div class="flex gap-8">
+      <input type="tel" id="q-phone" placeholder="輸入電話號碼" style="max-width:240px" value="${S.qPhone}">
+      <button class="btn btn-primary" onclick="queryMy()">查詢</button>
+    </div>
+    <div id="q-result" style="margin-top:14px">${renderQueryResult()}</div>
+  </div>`;
+  return html;
+}
+
+function renderQueryResult(){
+  if(S.qResult===null) return '';
+  if(!S.qResult.length) return '<p style="color:var(--text-muted);font-size:15px">查無預約紀錄</p>';
+  let html=`<div class="table-wrap"><table class="dtable"><thead><tr>
+    <th>日期</th><th>電腦</th><th>時段</th><th>單位</th><th>聯絡人</th><th>分機</th><th>狀態</th>
+  </tr></thead><tbody>`;
+  S.qResult.sort((a,b)=>b.date.localeCompare(a.date)).forEach(b=>{
+    const st = b.status==='arrived' ? '<span class="badge badge-green">已到</span>'
+             : b.status==='absent'  ? '<span class="badge badge-red">未到</span>'
+             : b.status==='cancelled'? '<span class="badge badge-gray">取消</span>'
+             : '<span class="badge badge-teal">確認</span>';
+    html+=`<tr>
+      <td>${fDate(b.date)}</td><td>電腦 ${b.computer}</td>
+      <td>${b.slots[0]}–${endTime(b.slots)}</td>
+      <td>${b.dept}</td><td style="font-weight:600">${b.name}</td>
+      <td>${b.ext||'—'}</td><td>${st}</td>
+    </tr>`;
+  });
+  html+=`</tbody></table></div>`;
+  if(S.blacklist.has(S.qPhone))
+    html+=`<p style="color:var(--red);margin-top:8px;font-size:14px;font-weight:600">⚠️ 此帳號已列入黑名單，無法進行新預約</p>`;
+  return html;
+}
+
+function weekNav(dir){ S.weekStart=addDays(S.weekStart,dir*7); renderMain(); }
+function jumpToday(){ S.weekStart=getMonday(new Date()); renderMain(); }
+function jumpToDate(v){ if(v){ S.weekStart=getMonday(new Date(v+'T12:00')); renderMain(); } }
+function queryMy(){
+  const p=document.getElementById('q-phone')?.value.trim();
+  if(!p){ toast('請輸入電話號碼'); return; }
+  S.qPhone=p;
+  S.qResult=S.bookings.filter(b=>b.phone===p);
+  document.getElementById('q-result').innerHTML=renderQueryResult();
+}
+
+// ── BOOKING MODAL（點格帶入日期+起始時段，選電腦→選時數）────────────────────
+function openModal(date, startSlot){
+  S.modal = { date, startSlot };
+  S.pickedComp = null;
+  S.form = { dept:'', name:'', phone:'', ext:'', _dur:1 };
+  document.getElementById('modal-area').innerHTML = renderModalHTML();
+}
+
+function renderModalHTML(){
+  if(!S.modal) return '';
+  const { date, startSlot } = S.modal;
+
+  // ── 電腦卡片 ────────────────────────────────────────────────────────────────
+  let compHtml='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:4px">';
+  COMPUTERS.forEach(function(c){
+    const bs      = bookedSet(date,c);
+    const si      = SLOTS.indexOf(startSlot);
+    let avail     = 0;
+    for(let i=si; i<SLOTS.length; i++){ if(!bs.has(SLOTS[i])) avail++; else break; }
+    avail         = Math.min(avail, MAX_SLOTS);
+    const sel     = S.pickedComp===c;
+    const disabled= avail===0;
+    const label   = disabled ? '已滿' : '最多 '+(avail*0.5).toFixed(1)+'h';
+    const clkAttr = disabled ? '' : ' onclick="selComp('+c+')"';
+    const border  = sel ? COMP_COLORS[c-1] : 'var(--border-md)';
+    const bg      = sel ? COMP_COLORS[c-1]+'22' : '#fff';
+    const cursor  = disabled ? 'not-allowed' : 'pointer';
+    const opacity = disabled ? '0.4' : '1';
+    compHtml += '<div'+clkAttr+' style="border:2px solid '+border+';background:'+bg
+      +';border-radius:10px;padding:13px 6px;text-align:center;cursor:'+cursor
+      +';opacity:'+opacity+';transition:all .12s">'
+      +'<div style="font-size:15px;font-weight:700;color:'+COMP_COLORS[c-1]+'">電腦 '+c+'</div>'
+      +'<div style="font-size:13px;color:var(--text-muted);margin-top:3px">'+label+'</div>'
+      +'</div>';
+  });
+  compHtml+='</div>';
+
+  // ── 時數按鈕（選了電腦後才出現）────────────────────────────────────────────
+  let durationHtml='';
+  if(S.pickedComp!==null){
+    const bs   = bookedSet(date,S.pickedComp);
+    const si   = SLOTS.indexOf(startSlot);
+    let maxA   = 0;
+    for(let i=si; i<SLOTS.length; i++){ if(!bs.has(SLOTS[i])) maxA++; else break; }
+    maxA = Math.min(maxA, MAX_SLOTS);
+    const cur  = S.form._dur || 1;
+    const previewSlots = SLOTS.slice(si, si+cur);
+    var durBtns='';
+    for(var n=1;n<=maxA;n++){
+      var btnCls='btn btn-sm'+(cur===n?' btn-gold':'');
+      durBtns+='<button class="'+btnCls+'" onclick="setDur('+n+')">'+(n*0.5).toFixed(1)+' 小時</button>';
+    }
+    durationHtml='<div class="field">'
+      +'<label>使用時間</label>'
+      +'<div style="display:flex;gap:8px;flex-wrap:wrap">'+durBtns+'</div>'
+      +'<div style="margin-top:10px;padding:10px 14px;background:var(--teal-lt);border-radius:8px;font-size:15px;color:var(--teal);font-weight:600">'
+      +'預約時段：'+previewSlots[0]+' – '+endTime(previewSlots)
+      +'</div></div>';
+  }
+
+  return`<div class="modal-bg" onclick="if(event.target===this)closeModal()">
   <div class="modal">
-    <div class="modal-title">新增預約</div>
-    <div class="modal-sub" id="book-sub"></div>
-    <div style="margin-bottom:12px">
-      <div style="font-size:12px;color:#5f5e5a;margin-bottom:5px">預約時長</div>
-      <div class="dur-grid" id="dur-grid">
-        <button class="dur-btn active" data-v="1" onclick="pickDuration(this)">30 分</button>
-        <button class="dur-btn" data-v="2" onclick="pickDuration(this)">1 小時</button>
-        <button class="dur-btn" data-v="3" onclick="pickDuration(this)">1.5 小時</button>
-        <button class="dur-btn" data-v="4" onclick="pickDuration(this)">2 小時</button>
+    <div class="modal-title">新增預約 — ${fDate(date)} ${startSlot}</div>
+    <div class="field"><label>選擇電腦</label>${compHtml}</div>
+    ${durationHtml}
+    <hr class="divider">
+    <div class="field"><label>單位 / 部門</label>
+      <input id="m-dept" placeholder="如：資訊組" value="${S.form.dept}" oninput="S.form.dept=this.value">
+    </div>
+    <div class="field"><label>姓名</label>
+      <input id="m-name" placeholder="請輸入姓名" value="${S.form.name}" oninput="S.form.name=this.value">
+    </div>
+    <div class="grid-2">
+      <div class="field"><label>聯絡電話</label>
+        <input id="m-phone" type="tel" placeholder="0912-345-678" value="${S.form.phone}" oninput="S.form.phone=this.value">
+      </div>
+      <div class="field"><label>分機（選填）</label>
+        <input id="m-ext" placeholder="如：1234" value="${S.form.ext}" oninput="S.form.ext=this.value">
       </div>
     </div>
-    <div class="field">
-      <label for="f-name">姓名 <span style="color:#a32d2d">*</span></label>
-      <input type="text" id="f-name" placeholder="請輸入姓名">
-      <div class="errmsg" id="e-name"></div>
+    <div class="flex gap-8 mt-12">
+      <button class="btn btn-primary w-full" style="justify-content:center;font-size:16px" onclick="submitBooking()">確認預約</button>
+      <button class="btn w-full" style="justify-content:center;font-size:16px" onclick="closeModal()">取消</button>
     </div>
-    <div class="field">
-      <label for="f-dept">單位 <span style="color:#a32d2d">*</span></label>
-      <input type="text" id="f-dept" placeholder="請輸入所屬單位">
-      <div class="errmsg" id="e-dept"></div>
-    </div>
-    <div class="field">
-      <label for="f-phone">連絡電話 <span style="color:#a32d2d">*</span></label>
-      <input type="tel" id="f-phone" placeholder="請輸入聯絡電話">
-      <div class="errmsg" id="e-phone"></div>
-    </div>
-    <div class="modal-actions">
-      <button class="btn-cancel" id="book-cancel-btn" onclick="closeBook()">取消</button>
-      <button class="btn-confirm" id="book-confirm-btn" onclick="confirmBook()">確認預約</button>
-    </div>
-  </div>
-</div>
-
-<!-- 詳情 Modal -->
-<div class="modal-bg" id="detail-modal">
-  <div class="modal">
-    <div class="modal-title" style="margin-bottom:1rem">預約詳情</div>
-    <div id="detail-body"></div>
-    <div class="modal-actions">
-      <button class="btn-cancel" onclick="closeDetail()">關閉</button>
-      <button class="btn-del" id="del-btn" onclick="cancelBook()">取消預約</button>
-    </div>
-  </div>
-</div>
-
-<div class="toast" id="toast"></div>
-
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script>
-// ── Supabase 設定 ──────────────────────────────────────────
-var SUPABASE_URL = "https://lonvqyzpihusqhmqgkcr.supabase.co";
-var SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxvbnZxeXpwaWh1c3FobXFna2NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5OTQ5OTQsImV4cCI6MjA5NTU3MDk5NH0.U5cHX1blOrAIx75D0kbxIDsyfbNYivTGwe8Bnl-s6yw";
-var TABLE = "bookings";
-
-function apiCall(path, opts) {
-  opts = opts || {};
-  return fetch(SUPABASE_URL + "/rest/v1/" + path, {
-    method: opts.method || "GET",
-    headers: Object.assign({
-      "apikey": SUPABASE_KEY,
-      "Authorization": "Bearer " + SUPABASE_KEY,
-      "Content-Type": "application/json",
-      "Prefer": opts.prefer || ""
-    }, opts.headers || {}),
-    body: opts.body || undefined
-  });
+  </div></div>`;
 }
 
-function dbGetWeek(dateList) {
-  var inList = dateList.map(function(d){ return '"' + d + '"'; }).join(",");
-  return apiCall(TABLE + "?date=in.(" + inList + ")&order=date,slot_start")
-    .then(function(res){ if (!res.ok) return res.text().then(function(t){throw new Error(t);}); return res.json(); });
+function selComp(c){
+  S.pickedComp=c;
+  if(!S.form._dur) S.form._dur=1;
+  document.getElementById('modal-area').innerHTML=renderModalHTML();
 }
+function setDur(n){ S.form._dur=n; document.getElementById('modal-area').innerHTML=renderModalHTML(); }
 
-function dbInsert(row) {
-  return apiCall(TABLE, { method:"POST", prefer:"return=representation", body: JSON.stringify(row) })
-    .then(function(res){
-      if (!res.ok) return res.json().then(function(e){ throw new Error(e.message||"新增失敗"); });
-      return res.json();
-    });
-}
+async function submitBooking(){
+  // 從 DOM 或 state 取值
+  const dept  = (document.getElementById('m-dept')?.value  || S.form.dept).trim();
+  const name  = (document.getElementById('m-name')?.value  || S.form.name).trim();
+  const phone = (document.getElementById('m-phone')?.value || S.form.phone).trim();
+  const ext   = (document.getElementById('m-ext')?.value   || S.form.ext).trim();
+  if(!dept)       { toast('請填寫單位');   return; }
+  if(!name)       { toast('請填寫姓名');   return; }
+  if(!phone)      { toast('請填寫電話');   return; }
+  if(S.pickedComp===null){ toast('請選擇電腦'); return; }
+  if(!S.form._dur){ toast('請選擇使用時間'); return; }
+  if(S.blacklist.has(phone)){ toast('⚠️ 此電話已列入黑名單，無法預約'); return; }
 
-function dbDelete(id) {
-  return apiCall(TABLE + "?id=eq." + id, { method:"DELETE" })
-    .then(function(res){ if (!res.ok) return res.text().then(function(t){throw new Error(t);}); });
-}
+  const si    = SLOTS.indexOf(S.modal.startSlot);
+  const slots = SLOTS.slice(si, si+S.form._dur);
+  const bs    = bookedSet(S.modal.date, S.pickedComp);
+  for(const sl of slots) if(bs.has(sl)){ toast('選擇的時段已被預約，請重新選擇'); return; }
 
-function dbGetAll() {
-  return apiCall(TABLE + "?order=date,slot_start")
-    .then(function(res){ if (!res.ok) return res.text().then(function(t){throw new Error(t);}); return res.json(); });
-}
-
-// ── 常數 ──────────────────────────────────────────────────
-var OPEN_H = 8, CLOSE_H = 18, SLOTS = (CLOSE_H - OPEN_H) * 2;
-var DAYS_ZH = ["日","一","二","三","四","五","六"];
-
-// ── 狀態 ──────────────────────────────────────────────────
-var currentWeekOf = weekStart(new Date());
-var bookings = {};
-var selSlot = null;
-var chosenDuration = 1;
-var detailId = null;
-
-// ── 日期工具 ──────────────────────────────────────────────
-function weekStart(d) {
-  var t = new Date(d); t.setHours(0,0,0,0);
-  t.setDate(t.getDate() - t.getDay() + 1); return t;
-}
-function addDays(d, n) { var t = new Date(d); t.setDate(t.getDate()+n); return t; }
-function dayKey(d) { return d.toISOString().slice(0,10); }
-function slotTime(i) {
-  var m = OPEN_H*60 + i*30, h = Math.floor(m/60), mm = m%60;
-  return (h<10?"0":"")+h+":"+(mm===0?"00":"30");
-}
-function slotLabel(i) { return slotTime(i)+" – "+slotTime(i+1); }
-function isWeekend(d) { var day = d.getDay(); return day===0||day===6; }
-function getWeekDays() { return Array.from({length:7}, function(_,i){ return addDays(currentWeekOf,i); }); }
-function esc(s) {
-  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
-}
-
-// ── 建立快取 ──────────────────────────────────────────────
-function buildCache(rows) {
-  var cache = {};
-  rows.forEach(function(row) {
-    var dk = row.date;
-    if (!cache[dk]) cache[dk] = {};
-    for (var j=0; j<row.duration; j++) {
-      cache[dk][row.slot_start+j] = Object.assign({}, row, {start: row.slot_start});
-    }
-  });
-  return cache;
-}
-
-function loadWeek() {
-  var days = getWeekDays().map(dayKey);
-  return dbGetWeek(days).then(function(rows){ bookings = buildCache(rows); });
-}
-
-// ── 初始化 ────────────────────────────────────────────────
-function init() {
-  loadWeek().then(function() {
-    setConnStatus("ok");
-    document.getElementById("btn-export").disabled = false;
-    document.getElementById("main-loading").style.display = "none";
-    render();
-  }).catch(function(e) {
-    setConnStatus("fail");
-    document.getElementById("main-loading").style.display = "none";
-    showToast("⚠ 資料庫連線失敗：" + e.message, "error");
-    render();
-  });
-}
-
-function setConnStatus(state) {
-  var el = document.getElementById("conn-status");
-  var icons = {ok:"ti-circle-check", fail:"ti-circle-x", loading:"ti-circle"};
-  var labels = {ok:"已連線", fail:"連線失敗", loading:"連線中"};
-  el.className = "conn-status " + state;
-  el.innerHTML = '<i class="ti '+icons[state]+'" style="font-size:10px"></i> '+labels[state];
-}
-
-// ── 最大時長 ──────────────────────────────────────────────
-function maxDur(dk, si) {
-  var bk = bookings[dk] || {};
-  var max = 1;
-  for (var j=1; j<=3; j++) {
-    var next = si+j;
-    if (next >= SLOTS || bk[next]) break;
-    max = j+1;
-  }
-  return max;
-}
-
-// ── 渲染 ──────────────────────────────────────────────────
-function render() {
-  var days = getWeekDays();
-  var todayKey = dayKey(new Date());
-  document.getElementById("week-label").textContent = getWeekLabel();
-
-  var seen = {}, total = 0;
-  days.forEach(function(d) {
-    if (isWeekend(d)) return;
-    var dk = dayKey(d), bk = bookings[dk] || {};
-    Object.keys(bk).forEach(function(si) {
-      var b = bk[si], key = dk+"-"+b.start;
-      if (!seen[key]) { seen[key]=true; total++; }
-    });
-  });
-  document.getElementById("total-badge").textContent = "本週 "+total+" 筆";
-
-  var now = new Date();
-  var html = "";
-
-  html += '<div class="hdr-time"><i class="ti ti-clock" style="font-size:13px"></i></div>';
-  days.forEach(function(d, di) {
-    var weekend = isWeekend(d), isToday = dayKey(d)===todayKey;
-    var cls = "hdr-day"+(weekend?" weekend":"")+(isToday?" today":"");
-    var br = di<6 ? "border-right:0.5px solid rgba(0,0,0,0.1)" : "";
-    html += '<div class="'+cls+'" style="'+br+'"><div class="dow">星期'+DAYS_ZH[d.getDay()]+'</div><div class="date">'+(d.getMonth()+1)+"/"+d.getDate()+'</div></div>';
-  });
-
-  for (var si=0; si<SLOTS; si++) {
-    var isLastRow = si===SLOTS-1;
-    var rb = isLastRow ? "" : "border-bottom:0.5px solid rgba(0,0,0,0.1)";
-    html += '<div class="time-cell" style="'+rb+'">'+(si%2===0?slotTime(si):"")+'</div>';
-
-    days.forEach(function(d, di) {
-      var dk = dayKey(d), bk = bookings[dk]||{}, b = bk[si];
-      var weekend = isWeekend(d), isLastCol = di===6;
-      var slotDate = new Date(d);
-      var sMin = OPEN_H*60+si*30;
-      slotDate.setHours(Math.floor(sMin/60), sMin%60, 0, 0);
-      var isPast = !weekend && slotDate < now;
-      var borderR = isLastCol ? "" : "border-right:0.5px solid rgba(0,0,0,0.1)";
-      var borderB = isLastRow ? "" : "border-bottom:0.5px solid rgba(0,0,0,0.1)";
-
-      if (weekend) {
-        html += '<div class="slot-cell weekend" style="'+borderR+';'+borderB+'"><div class="slot-weekend-fill">'+(si===Math.floor(SLOTS/2)?'<span style="font-size:9px;color:#bbb">休息</span>':"")+'</div></div>';
-      } else if (b && b.start===si) {
-        html += '<div class="slot-cell" style="'+borderR+';'+borderB+';padding:2px" onclick="showDetail(\''+b.id+'\')"><div class="slot-booked"><div class="bname">'+esc(b.name)+'</div><div class="bdept">'+esc(b.dept)+'</div></div></div>';
-      } else if (b && b.start!==si) {
-        html += '<div class="slot-cell" style="'+borderR+';'+borderB+';padding:0" onclick="showDetail(\''+b.id+'\')"><div class="slot-cont"></div></div>';
-      } else if (isPast) {
-        html += '<div class="slot-cell" style="'+borderR+';'+borderB+'"><div class="slot-past">—</div></div>';
-      } else {
-        html += '<div class="slot-cell" style="'+borderR+';'+borderB+';padding:0"><button class="slot-free" onclick="openBook(\''+dk+'\','+si+')" aria-label="預約 '+dk+' '+slotLabel(si)+'"><i class="ti ti-plus" style="font-size:11px"></i></button></div>';
-      }
-    });
-  }
-  document.getElementById("cal-grid").innerHTML = html;
-}
-
-function getWeekLabel() {
-  var days = getWeekDays(), s=days[0], e=days[6];
-  return s.getFullYear()+"/"+(s.getMonth()+1)+"/"+s.getDate()+" – "+(e.getMonth()+1)+"/"+e.getDate();
-}
-
-// ── 切換週 ────────────────────────────────────────────────
-function goToday() { currentWeekOf = weekStart(new Date()); refreshWeek(); }
-function changeWeek(n) { currentWeekOf = addDays(currentWeekOf, n*7); refreshWeek(); }
-
-function refreshWeek() {
-  document.getElementById("main-loading").style.display = "flex";
-  loadWeek().then(function(){
-    document.getElementById("main-loading").style.display = "none";
-    render();
-  }).catch(function(e){
-    document.getElementById("main-loading").style.display = "none";
-    showToast("載入失敗："+e.message, "error");
-  });
-}
-
-// ── 預約 Modal ────────────────────────────────────────────
-function openBook(dk, si) {
-  si = parseInt(si);
-  selSlot = {dk:dk, si:si};
-  chosenDuration = 1;
-  document.getElementById("book-sub").textContent = dk+"　"+slotLabel(si);
-  ["f-name","f-dept","f-phone"].forEach(function(id){
-    document.getElementById(id).value="";
-    document.getElementById(id).classList.remove("err");
-  });
-  ["e-name","e-dept","e-phone"].forEach(function(id){ document.getElementById(id).textContent=""; });
-  var md = maxDur(dk, si);
-  document.querySelectorAll(".dur-btn").forEach(function(btn){
-    var v = parseInt(btn.dataset.v);
-    btn.disabled = v>md;
-    btn.classList.toggle("active", v===1);
-  });
-  setBookLoading(false);
-  document.getElementById("book-modal").classList.add("open");
-  setTimeout(function(){ document.getElementById("f-name").focus(); }, 50);
-}
-
-function closeBook() { document.getElementById("book-modal").classList.remove("open"); selSlot=null; }
-
-function pickDuration(btn) {
-  chosenDuration = parseInt(btn.dataset.v);
-  document.querySelectorAll(".dur-btn").forEach(function(b){ b.classList.remove("active"); });
-  btn.classList.add("active");
-}
-
-function setBookLoading(on) {
-  document.getElementById("book-confirm-btn").disabled = on;
-  document.getElementById("book-cancel-btn").disabled = on;
-  document.getElementById("book-confirm-btn").textContent = on ? "儲存中..." : "確認預約";
-}
-
-function confirmBook() {
-  var name = document.getElementById("f-name").value.trim();
-  var dept = document.getElementById("f-dept").value.trim();
-  var phone = document.getElementById("f-phone").value.trim();
-  var ok = true;
-  [["f-name","e-name",name,"請填寫姓名"],
-   ["f-dept","e-dept",dept,"請填寫單位"],
-   ["f-phone","e-phone",phone,"請填寫連絡電話"]].forEach(function(arr){
-    if (!arr[2]) {
-      document.getElementById(arr[1]).textContent = arr[3];
-      document.getElementById(arr[0]).classList.add("err");
-      ok = false;
+  const bData = {
+    date: S.modal.date, computer: S.pickedComp, slots,
+    dept, name, phone, ext,
+    status:'confirmed', createdAt: new Date().toISOString()
+  };
+  try{
+    if(window._fbAddBooking){
+      const newId = await window._fbAddBooking(bData);
+      bData.id = newId;
     } else {
-      document.getElementById(arr[1]).textContent = "";
-      document.getElementById(arr[0]).classList.remove("err");
+      bData.id = 'LOCAL-'+Date.now();
+      S.bookings.push(bData);
     }
-  });
-  if (!ok) return;
-  setBookLoading(true);
-  dbInsert({ date:selSlot.dk, slot_start:selSlot.si, duration:chosenDuration, name:name, dept:dept, phone:phone })
-    .then(function(){
-      return loadWeek();
-    }).then(function(){
-      closeBook(); render();
-      showToast("✓ "+name+" 已預約 "+selSlot.dk+" "+slotTime(selSlot.si)+"–"+slotTime(selSlot.si+chosenDuration));
-    }).catch(function(e){
-      setBookLoading(false);
-      if (e.message && (e.message.indexOf("unique")>=0 || e.message.indexOf("duplicate")>=0)) {
-        showToast("⚠ 此時段已被預約，請選擇其他時段", "error");
-      } else {
-        showToast("⚠ 儲存失敗："+e.message, "error");
-      }
-    });
+    closeModal();
+    toast(`✅ 預約成功！${name} / 電腦 ${bData.computer} / ${slots[0]}–${endTime(slots)}`);
+    renderMain();
+  } catch(e){
+    console.error(e);
+    toast('❌ 儲存失敗：'+e.message);
+  }
 }
 
-// ── 詳情 Modal ────────────────────────────────────────────
-function showDetail(id) {
-  var found = null;
-  Object.keys(bookings).forEach(function(dk){
-    Object.keys(bookings[dk]).forEach(function(si){
-      var b = bookings[dk][si];
-      if (b.id===id && b.start===b.slot_start) found=b;
-    });
-  });
-  if (!found) return;
-  detailId = id;
-  document.getElementById("detail-body").innerHTML = [
-    ["姓名", esc(found.name)],
-    ["單位", esc(found.dept)],
-    ["電話", esc(found.phone)],
-    ["日期", found.date],
-    ["時間", slotTime(found.slot_start)+"–"+slotTime(found.slot_start+found.duration)],
-    ["時長", found.duration*30+" 分鐘"],
-    ["預約於", found.booked_at ? new Date(found.booked_at).toLocaleString("zh-TW") : "—"]
-  ].map(function(arr){
-    return '<div class="detail-row"><div class="detail-lab">'+arr[0]+'</div><div class="detail-val">'+arr[1]+'</div></div>';
-  }).join("");
-  document.getElementById("del-btn").disabled = false;
-  document.getElementById("del-btn").textContent = "取消預約";
-  document.getElementById("detail-modal").classList.add("open");
+// ── ADMIN LOGIN ───────────────────────────────────────────────────────────────
+function showLoginModal(){
+  document.getElementById('modal-area').innerHTML=`
+  <div class="modal-bg">
+  <div class="modal" style="width:360px">
+    <div class="modal-title">管理者登入</div>
+    <div class="field"><label>密碼</label>
+      <input type="password" id="adm-pw" placeholder="請輸入管理者密碼"
+        onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <div class="flex gap-8 mt-12">
+      <button class="btn btn-primary w-full" style="justify-content:center" onclick="doLogin()">登入</button>
+      <button class="btn w-full" style="justify-content:center" onclick="closeModal()">取消</button>
+    </div>
+  </div></div>`;
+}
+function doLogin(){
+  const pw=document.getElementById('adm-pw')?.value;
+  if(pw===ADMIN_PASS){
+    S.isAdmin=true; closeModal(); S.tab='admin';
+    ['reserve','admin','report'].forEach(k=>document.getElementById('tab-'+k).classList.toggle('active',k==='admin'));
+    renderMain();
+  } else toast('密碼錯誤');
 }
 
-function closeDetail() { document.getElementById("detail-modal").classList.remove("open"); detailId=null; }
+// ── ADMIN ─────────────────────────────────────────────────────────────────────
+function renderAdmin(){
+  return`<div class="flex gap-8 mb-16" style="align-items:center;flex-wrap:wrap">
+    <button class="btn${S.adminTab==='bookings'?' btn-primary':''}"   onclick="setAdminTab('bookings')">預約紀錄</button>
+    <button class="btn${S.adminTab==='closed'?' btn-amber':''}"       onclick="setAdminTab('closed')">休館日設定</button>
+    <button class="btn${S.adminTab==='blacklist'?' btn-danger':''}"   onclick="setAdminTab('blacklist')">黑名單管理</button>
+    <span style="margin-left:auto;font-size:14px;color:var(--text-muted)">管理者模式</span>
+    <button class="btn btn-sm" onclick="S.isAdmin=false;showTab('reserve')">登出</button>
+  </div>
+  ${S.adminTab==='bookings' ? renderAdminBk() : S.adminTab==='closed' ? renderAdminClosed() : renderAdminBL()}`;
+}
+function setAdminTab(t){ S.adminTab=t; renderMain(); }
 
-function cancelBook() {
-  if (!detailId) return;
-  var btn = document.getElementById("del-btn");
-  btn.disabled=true; btn.textContent="處理中...";
-  dbDelete(detailId).then(function(){
-    return loadWeek();
-  }).then(function(){
-    closeDetail(); render();
-    showToast("預約已取消");
-  }).catch(function(e){
-    btn.disabled=false; btn.textContent="取消預約";
-    showToast("⚠ 取消失敗："+e.message, "error");
-  });
+function renderAdminBk(){
+  const af=S.adminFilter;
+  let f=[...S.bookings];
+  if(af.date)     f=f.filter(b=>b.date===af.date);
+  if(af.computer) f=f.filter(b=>b.computer===Number(af.computer));
+  if(af.status)   f=f.filter(b=>b.status===af.status);
+  f.sort((a,b)=>a.date.localeCompare(b.date)||a.slots[0].localeCompare(b.slots[0]));
+
+  return`<div class="card">
+    <div class="section-title">篩選</div>
+    <div class="grid-3">
+      <div><label>日期</label>
+        <input type="date" value="${af.date}" onchange="S.adminFilter.date=this.value;renderMain()">
+      </div>
+      <div><label>電腦</label>
+        <select onchange="S.adminFilter.computer=this.value;renderMain()">
+          <option value="">全部</option>
+          ${COMPUTERS.map(c=>`<option value="${c}"${af.computer==c?' selected':''}>電腦 ${c}</option>`).join('')}
+        </select>
+      </div>
+      <div><label>狀態</label>
+        <select onchange="S.adminFilter.status=this.value;renderMain()">
+          <option value="">全部</option>
+          <option value="confirmed" ${af.status==='confirmed'?' selected':''}>已確認</option>
+          <option value="arrived"   ${af.status==='arrived'  ?' selected':''}>已到</option>
+          <option value="absent"    ${af.status==='absent'   ?' selected':''}>未到</option>
+          <option value="cancelled" ${af.status==='cancelled'?' selected':''}>已取消</option>
+        </select>
+      </div>
+    </div>
+    <div class="flex items-center justify-between mt-8">
+      <span style="font-size:14px;color:var(--text-muted)">共 ${f.length} 筆</span>
+      <button class="btn btn-sm" onclick="S.adminFilter={date:'',computer:'',status:''};renderMain()">清除篩選</button>
+    </div>
+  </div>
+  <div class="card" style="margin-top:16px">
+  <div class="table-wrap"><table class="dtable"><thead><tr>
+    <th>日期</th><th>電腦</th><th>時段</th><th>單位</th><th>姓名</th><th>電話</th><th>分機</th><th>狀態</th><th>操作</th>
+  </tr></thead><tbody>
+  ${f.length ? f.map(b=>{
+    const stBadge = b.status==='arrived'  ? '<span class="badge badge-green">已到</span>'
+                  : b.status==='absent'   ? '<span class="badge badge-red">未到</span>'
+                  : b.status==='cancelled'? '<span class="badge badge-gray">取消</span>'
+                  : '<span class="badge badge-teal">確認</span>';
+    const isBlk = S.blacklist.has(b.phone)?'<span class="badge badge-red" style="margin-left:5px">黑</span>':'';
+    const acts  = b.status!=='cancelled' ? `
+      ${b.status!=='arrived' ? `<button class="btn btn-xs btn-green" onclick="markSt('${b.id}','arrived')">已到</button>`:''}
+      ${b.status!=='absent'  ? `<button class="btn btn-xs btn-red"   onclick="markSt('${b.id}','absent')">未到</button>`:''}
+      <button class="btn btn-xs" onclick="markSt('${b.id}','cancelled')">取消</button>
+    ` : '<span style="color:var(--text-muted);font-size:13px">—</span>';
+    return`<tr>
+      <td>${fDate(b.date)}</td><td>電腦 ${b.computer}</td>
+      <td style="white-space:nowrap">${b.slots[0]}–${endTime(b.slots)}</td>
+      <td>${b.dept}</td><td style="font-weight:600">${b.name}${isBlk}</td>
+      <td>${b.phone}</td><td>${b.ext||'—'}</td><td>${stBadge}</td>
+      <td><div class="row-actions">${acts}</div></td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="9" style="text-align:center;padding:28px;color:var(--text-muted)">無資料</td></tr>'}
+  </tbody></table></div></div>`;
 }
 
-// ── 匯出 Excel ────────────────────────────────────────────
-function exportExcel() {
-  var btn = document.getElementById("btn-export");
-  btn.disabled=true;
-  btn.innerHTML='<i class="ti ti-loader" style="font-size:14px"></i>下載中...';
-  dbGetAll().then(function(rows){
-    var data=[["日期","星期","時段","姓名","單位","連絡電話","預約時間"]];
-    rows.forEach(function(r){
-      var d = new Date(r.date);
-      data.push([r.date,"星期"+DAYS_ZH[d.getDay()],slotTime(r.slot_start)+"–"+slotTime(r.slot_start+r.duration),r.name,r.dept,r.phone,r.booked_at?new Date(r.booked_at).toLocaleString("zh-TW"):""]);
-    });
-    var ws = XLSX.utils.aoa_to_sheet(data);
-    ws["!cols"] = [10,8,14,10,14,14,20].map(function(w){return{wch:w};});
-    var wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "預約記錄");
-    XLSX.writeFile(wb, "電腦預約記錄_"+dayKey(new Date())+".xlsx");
-  }).catch(function(e){
-    showToast("⚠ 匯出失敗："+e.message,"error");
-  }).finally(function(){
-    btn.disabled=false;
-    btn.innerHTML='<i class="ti ti-table-export" style="font-size:14px"></i>匯出 Excel';
-  });
+async function markSt(id, status){
+  const b=S.bookings.find(b=>b.id===id); if(!b) return;
+  b.status=status;
+  if(status==='absent'){
+    S.absCount[b.phone]=(S.absCount[b.phone]||0)+1;
+    if(window._fbUpdateAbs) await window._fbUpdateAbs(b.phone, S.absCount[b.phone]);
+    if(S.absCount[b.phone]>=3 && !S.blacklist.has(b.phone)){
+      const info={name:b.name,dept:b.dept,count:S.absCount[b.phone]};
+      S.blacklist.set(b.phone, info);
+      if(window._fbAddBlacklist) await window._fbAddBlacklist(b.phone, info);
+      toast(`⚠️ ${b.name} 累積 3 次未到，已自動列入黑名單`);
+    }
+  }
+  if(window._fbUpdateBooking) await window._fbUpdateBooking(id,{status});
+  renderMain();
 }
 
-// ── Toast ─────────────────────────────────────────────────
-var toastTimer = null;
-function showToast(msg, type) {
-  type = type || "success";
-  var t = document.getElementById("toast");
-  t.textContent = msg; t.className = "toast show "+type;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(function(){ t.classList.remove("show"); }, 3000);
+function renderAdminClosed(){
+  const sorted=[...S.closedDates].sort();
+  return`<div class="card">
+    <div class="section-title">新增休館日</div>
+    <div class="flex gap-8">
+      <input type="date" id="nc-date" min="${today()}" style="width:190px">
+      <button class="btn btn-amber" onclick="addClosed()">新增休館日</button>
+    </div>
+  </div>
+  <div class="card" style="margin-top:16px">
+    <div class="section-title">已設定休館日（${sorted.length} 天）</div>
+    ${sorted.length ? sorted.map(d=>`
+      <div class="blacklist-item">
+        <div class="flex items-center gap-8">
+          <span style="font-weight:600">${fDate(d)}</span>
+          <span class="badge badge-gray">${wdName(d)}</span>
+        </div>
+        <button class="btn btn-sm btn-danger" onclick="removeClosed('${d}')">移除</button>
+      </div>`).join('') : '<p style="color:var(--text-muted);font-size:15px">尚未設定休館日</p>'}
+  </div>`;
+}
+async function addClosed(){
+  const d=document.getElementById('nc-date')?.value;
+  if(!d){ toast('請選擇日期'); return; }
+  if(isWeekend(d)||isHoliday(d)){ toast('該日已為週末或國定假日'); return; }
+  S.closedDates.add(d);
+  if(window._fbAddClosed) await window._fbAddClosed(d);
+  toast(`已新增休館日：${fDate(d)}`); renderMain();
+}
+async function removeClosed(d){
+  S.closedDates.delete(d);
+  if(window._fbDelClosed) await window._fbDelClosed(d);
+  renderMain();
 }
 
-// ── 點背景關閉 ────────────────────────────────────────────
-document.querySelectorAll(".modal-bg").forEach(function(bg){
-  bg.addEventListener("click", function(e){ if(e.target===bg) bg.classList.remove("open"); });
-});
+function renderAdminBL(){
+  const list=[...S.blacklist.entries()];
+  return`<div class="card">
+    <div class="section-title">手動新增黑名單</div>
+    <div class="grid-3">
+      <div><label>電話</label><input id="bl-phone" type="tel" placeholder="0912345678"></div>
+      <div><label>姓名</label><input id="bl-name" placeholder="姓名"></div>
+      <div><label>單位</label><input id="bl-dept" placeholder="單位"></div>
+    </div>
+    <button class="btn btn-danger mt-12" onclick="manualBL()">加入黑名單</button>
+  </div>
+  <div class="card" style="margin-top:16px">
+    <div class="section-title">黑名單（${list.length} 人）</div>
+    ${list.length ? list.map(([phone,info])=>`
+      <div class="blacklist-item">
+        <div class="flex items-center gap-8">
+          <span style="font-weight:700;font-size:16px">${phone}</span>
+          <span style="color:var(--text-muted);font-size:14px">${info.name||''} ${info.dept?'｜'+info.dept:''}</span>
+          <span class="badge badge-red">未到 ${S.absCount[phone]||0} 次</span>
+        </div>
+        <button class="btn btn-sm" onclick="removeBL('${phone}')">解除黑名單</button>
+      </div>`).join('') : '<p style="color:var(--text-muted);font-size:15px">黑名單為空</p>'}
+  </div>`;
+}
+async function manualBL(){
+  const p=document.getElementById('bl-phone')?.value.trim();
+  const n=document.getElementById('bl-name')?.value.trim();
+  const d=document.getElementById('bl-dept')?.value.trim();
+  if(!p){ toast('請輸入電話'); return; }
+  const info={name:n||'',dept:d||'',count:0};
+  S.blacklist.set(p,info);
+  if(window._fbAddBlacklist) await window._fbAddBlacklist(p,info);
+  toast('已加入黑名單'); renderMain();
+}
+async function removeBL(phone){
+  S.blacklist.delete(phone);
+  if(window._fbDelBlacklist) await window._fbDelBlacklist(phone);
+  renderMain(); toast('已解除黑名單');
+}
 
-// ── 啟動 ──────────────────────────────────────────────────
-init();
+// ── REPORT ────────────────────────────────────────────────────────────────────
+function renderReport(){
+  let f=[...S.bookings].filter(b=>b.status!=='cancelled');
+  if(S.rFrom) f=f.filter(b=>b.date>=S.rFrom);
+  if(S.rTo)   f=f.filter(b=>b.date<=S.rTo);
+
+  const total  = f.length;
+  const totalH = f.reduce((s,b)=>s+b.slots.length*0.5,0);
+  const absent = f.filter(b=>b.status==='absent').length;
+  const arrived= f.filter(b=>b.status==='arrived').length;
+  const rate   = total>0 ? Math.round(arrived/total*100) : 0;
+
+  const slotCnt={};
+  f.forEach(b=>b.slots.forEach(sl=>{slotCnt[sl]=(slotCnt[sl]||0)+1;}));
+  const topSlots=Object.entries(slotCnt).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const maxSl  = topSlots.length ? topSlots[0][1] : 1;
+
+  const compH={};
+  COMPUTERS.forEach(c=>{ compH[c]=f.filter(b=>b.computer===c).reduce((s,b)=>s+b.slots.length*0.5,0); });
+  const maxCH = Math.max(...Object.values(compH),1);
+
+  return`<div class="card">
+    <div class="flex items-center justify-between mb-16">
+      <div class="section-title" style="margin-bottom:0">統計報表</div>
+      <div class="flex gap-8">
+        <button class="btn btn-sm" onclick="exportCSV()">匯出 CSV</button>
+        <button class="btn btn-sm btn-amber" onclick="exportXLSX()">匯出 Excel</button>
+        <button class="btn btn-sm btn-primary" onclick="printPDF()">匯出 PDF</button>
+      </div>
+    </div>
+    <div class="flex gap-12 items-end flex-wrap">
+      <div style="flex:1;min-width:140px"><label>開始日期</label>
+        <input type="date" value="${S.rFrom}" onchange="S.rFrom=this.value;renderMain()">
+      </div>
+      <div style="flex:1;min-width:140px"><label>結束日期</label>
+        <input type="date" value="${S.rTo}" onchange="S.rTo=this.value;renderMain()">
+      </div>
+      <button class="btn btn-sm" onclick="S.rFrom='';S.rTo='';renderMain()">清除</button>
+    </div>
+  </div>
+
+  <div class="grid-4" style="margin-top:16px">
+    <div class="stat-card"><div class="stat-label">總預約筆數</div><div class="stat-value">${total}</div></div>
+    <div class="stat-card"><div class="stat-label">總使用時數</div><div class="stat-value">${totalH.toFixed(1)} h</div></div>
+    <div class="stat-card"><div class="stat-label">未到次數</div><div class="stat-value" style="color:var(--red)">${absent}</div></div>
+    <div class="stat-card"><div class="stat-label">報到率</div><div class="stat-value" style="color:var(--green)">${rate}%</div></div>
+  </div>
+
+  <div class="grid-2" style="margin-top:16px">
+    <div class="card">
+      <div class="section-title">熱門時段 TOP 5</div>
+      ${topSlots.length ? topSlots.map(([sl,cnt])=>`
+        <div class="bar-row">
+          <div class="bar-label">${sl}</div>
+          <div class="bar-track"><div class="bar-fill" style="width:${Math.round(cnt/maxSl*100)}%;background:var(--teal)"></div></div>
+          <div class="bar-val">${cnt} 次</div>
+        </div>`).join('') : '<p style="color:var(--text-muted)">無資料</p>'}
+    </div>
+    <div class="card">
+      <div class="section-title">各電腦使用時數</div>
+      ${COMPUTERS.map(c=>`
+        <div class="bar-row">
+          <div class="bar-label">電腦 ${c}</div>
+          <div class="bar-track"><div class="bar-fill" style="width:${Math.round(compH[c]/maxCH*100)}%;background:${COMP_COLORS[c-1]}"></div></div>
+          <div class="bar-val">${compH[c].toFixed(1)} h</div>
+        </div>`).join('')}
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div class="section-title">各電腦明細</div>
+    <div class="table-wrap"><table class="dtable"><thead><tr>
+      <th>電腦</th><th>預約次數</th><th>使用時數</th><th>未到次數</th>
+    </tr></thead><tbody>
+    ${COMPUTERS.map(c=>{
+      const ab=f.filter(b=>b.computer===c&&b.status==='absent').length;
+      return`<tr><td style="font-weight:600">電腦 ${c}</td><td>${f.filter(b=>b.computer===c).length}</td><td>${compH[c].toFixed(1)} h</td><td>${ab}</td></tr>`;
+    }).join('')}
+    </tbody></table></div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div class="section-title">預約清單（${f.length} 筆）</div>
+    <div class="table-wrap"><table class="dtable"><thead><tr>
+      <th>日期</th><th>電腦</th><th>單位</th><th>姓名</th><th>電話</th><th>分機</th><th>時段</th><th>時數</th><th>狀態</th>
+    </tr></thead><tbody>
+    ${f.length ? [...f].sort((a,b)=>b.date.localeCompare(a.date)).map(b=>{
+      const st=b.status==='arrived'?'已到':b.status==='absent'?'未到':'確認';
+      return`<tr>
+        <td>${fDate(b.date)}</td><td>電腦 ${b.computer}</td>
+        <td>${b.dept}</td><td style="font-weight:600">${b.name}</td>
+        <td>${b.phone}</td><td>${b.ext||'—'}</td>
+        <td style="white-space:nowrap">${b.slots[0]}–${endTime(b.slots)}</td>
+        <td>${(b.slots.length*0.5).toFixed(1)} h</td><td>${st}</td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="9" style="text-align:center;padding:28px;color:var(--text-muted)">無資料</td></tr>'}
+    </tbody></table></div>
+  </div>`;
+}
+
+// ── EXPORT ────────────────────────────────────────────────────────────────────
+function getExport(){
+  let f=[...S.bookings];
+  if(S.rFrom) f=f.filter(b=>b.date>=S.rFrom);
+  if(S.rTo)   f=f.filter(b=>b.date<=S.rTo);
+  return f;
+}
+function stLabel(s){ return s==='arrived'?'已到':s==='absent'?'未到':s==='cancelled'?'取消':'確認'; }
+
+function exportCSV(){
+  const f=getExport();
+  const rows=[['日期','電腦','單位','姓名','電話','分機','開始','結束','時數','狀態']];
+  f.forEach(b=>rows.push([fDate(b.date),`電腦${b.computer}`,b.dept,b.name,b.phone,b.ext||'',b.slots[0],endTime(b.slots),(b.slots.length*0.5).toFixed(1),stLabel(b.status)]));
+  const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  dlBlob('\uFEFF'+csv,'text/csv',`預約紀錄_${today()}.csv`);
+  toast('CSV 已下載');
+}
+function exportXLSX(){
+  const f=getExport();
+  const ws1=[['日期','電腦','單位','姓名','電話','分機','開始','結束','時數','狀態']];
+  f.forEach(b=>ws1.push([fDate(b.date),`電腦${b.computer}`,b.dept,b.name,b.phone,b.ext||'',b.slots[0],endTime(b.slots),+(b.slots.length*0.5).toFixed(1),stLabel(b.status)]));
+  const active=f.filter(b=>b.status!=='cancelled');
+  const totalH=active.reduce((s,b)=>s+b.slots.length*0.5,0);
+  const ws2=[['項目','數值'],['總筆數',f.length],['總時數',+totalH.toFixed(1)],
+    ['未到次數',f.filter(b=>b.status==='absent').length],
+    ...COMPUTERS.map(c=>[`電腦${c}時數`,+active.filter(b=>b.computer===c).reduce((s,b)=>s+b.slots.length*0.5,0).toFixed(1)])];
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(ws1),'預約清單');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(ws2),'統計摘要');
+  XLSX.writeFile(wb,`電腦預約報表_${today()}.xlsx`);
+  toast('Excel 已下載');
+}
+function dlBlob(content,type,name){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([content],{type}));
+  a.download=name; a.click();
+}
+
+function printPDF(){
+  const f=getExport().filter(b=>b.status!=='cancelled');
+  const range=S.rFrom||S.rTo?`${S.rFrom||'—'} 至 ${S.rTo||'—'}`:'全部';
+  const totalH=f.reduce((s,b)=>s+b.slots.length*0.5,0);
+  const absent=f.filter(b=>b.status==='absent').length;
+  const arrived=f.filter(b=>b.status==='arrived').length;
+  const rate=f.length>0?Math.round(arrived/f.length*100):0;
+  const slotCnt={};f.forEach(b=>b.slots.forEach(sl=>{slotCnt[sl]=(slotCnt[sl]||0)+1;}));
+  const topSlots=Object.entries(slotCnt).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const compH={};COMPUTERS.forEach(c=>{compH[c]=f.filter(b=>b.computer===c).reduce((s,b)=>s+b.slots.length*0.5,0);});
+  const maxCH=Math.max(...Object.values(compH),1);
+  const rows=[...f].sort((a,b)=>b.date.localeCompare(a.date)).map(b=>
+    `<tr><td>${fDate(b.date)}</td><td>電腦${b.computer}</td><td>${b.dept}</td><td>${b.name}</td>
+     <td>${b.phone}${b.ext?' #'+b.ext:''}</td><td>${b.slots[0]}–${endTime(b.slots)}</td>
+     <td>${(b.slots.length*0.5).toFixed(1)}h</td><td>${stLabel(b.status)}</td></tr>`).join('');
+
+  const html=`<!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;600;700&display=swap" rel="stylesheet">
+<title>電腦預約報表</title>
+<style>
+body{font-family:'Noto Sans TC',sans-serif;font-size:12px;color:#1a2424;padding:28px;margin:0}
+h1{font-size:22px;font-weight:700;color:#2F4F4F;margin-bottom:3px}
+.sub{font-size:12px;color:#7a9090;margin-bottom:20px}
+.stats{display:flex;gap:12px;margin-bottom:20px}
+.sc{flex:1;background:#eaf1f1;border-radius:8px;padding:12px 14px}
+.sl{font-size:11px;color:#2F4F4F;font-weight:700}
+.sv{font-size:22px;font-weight:700;margin-top:3px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px}
+.stitle{font-size:14px;font-weight:700;color:#2F4F4F;padding-bottom:5px;border-bottom:2px solid #b0c8c8;margin-bottom:10px}
+.br{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+.bl{width:55px;text-align:right;font-size:11px;color:#3d5555;font-weight:600}
+.bt{flex:1;background:#dde6e6;border-radius:3px;height:13px}
+.bf{height:100%;border-radius:3px}
+.bv{font-size:11px;color:#7a9090;width:34px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{background:#eaf1f1;padding:6px 9px;text-align:left;border:1px solid #b0c8c8;font-weight:700;color:#2F4F4F}
+td{padding:6px 9px;border:1px solid #e0e8e8}
+tr:nth-child(even) td{background:#f4f8f4}
+@media print{body{padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style></head><body>
+<h1>電腦預約系統 — 統計報表</h1>
+<div class="sub">查詢區間：${range}　　匯出時間：${new Date().toLocaleString('zh-TW')}</div>
+<div class="stats">
+  <div class="sc"><div class="sl">總預約筆數</div><div class="sv">${f.length}</div></div>
+  <div class="sc"><div class="sl">總使用時數</div><div class="sv" style="color:#018948">${totalH.toFixed(1)}h</div></div>
+  <div class="sc"><div class="sl">未到次數</div><div class="sv" style="color:#a42a2b">${absent}</div></div>
+  <div class="sc"><div class="sl">報到率</div><div class="sv" style="color:#018948">${rate}%</div></div>
+</div>
+<div class="g2">
+  <div><div class="stitle">熱門時段 TOP 5</div>
+    ${topSlots.map(([sl,cnt])=>`<div class="br"><div class="bl">${sl}</div><div class="bt"><div class="bf" style="width:${Math.round(cnt/Math.max(topSlots[0][1],1)*100)}%;background:#2F4F4F"></div></div><div class="bv">${cnt}次</div></div>`).join('')}
+  </div>
+  <div><div class="stitle">各電腦使用時數</div>
+    ${COMPUTERS.map(c=>`<div class="br"><div class="bl">電腦${c}</div><div class="bt"><div class="bf" style="width:${Math.round(compH[c]/maxCH*100)}%;background:${COMP_COLORS[c-1]}"></div></div><div class="bv">${compH[c].toFixed(1)}h</div></div>`).join('')}
+  </div>
+</div>
+<div class="stitle">預約清單（${f.length} 筆）</div>
+<table><thead><tr><th>日期</th><th>電腦</th><th>單位</th><th>姓名</th><th>電話/分機</th><th>時段</th><th>時數</th><th>狀態</th></tr></thead>
+<tbody>${rows}</tbody></table>
+<script>window.onload=()=>window.print();<\/script>
+</body></html>`;
+  const w=window.open('','_blank');
+  if(w){ w.document.write(html); w.document.close(); }
+  else toast('請允許彈出視窗以列印 PDF');
+}
+
+// ── APP START ─────────────────────────────────────────────────────────────────
+function startApp(){
+  document.getElementById('loading-screen').style.display='none';
+  document.getElementById('app').style.display='block';
+  window._appReady=true;
+  renderMain();
+}
+
+// 若 Firebase 未設定（本機開發），300ms 後直接啟動
+if(typeof window._fbAddBooking==='undefined'){
+  setTimeout(startApp, 300);
+}
 </script>
 </body>
 </html>
