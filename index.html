@@ -14,6 +14,18 @@ import {
   getDatabase, ref, set, push, update, remove, onValue, get
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
+// ── 提前初始化 window._S，確保 onValue 回呼觸發時已存在 ──
+window._S = {
+  tab:'reserve', isAdmin:false,
+  weekStart:null,  // 由同步 JS 設定
+  modal:null, pickedComp:null,
+  form:{ dept:'', name:'', phone:'', ext:'', note:'', _dur:1 },
+  bookings:[], closedDates:new Set(), blacklist:new Map(), absCount:{},
+  adminTab:'bookings', adminFilter:{ date:'', computer:'', status:'' },
+  rFrom:'', rTo:'', qPhone:'', qResult:null
+};
+window._appReady = false;
+
 const firebaseConfig = {
   apiKey: "AIzaSyA5aw1b8kV_aADZkGr6U_aobftl-uolxbw",
   authDomain: "pcbooking-d2b7b.firebaseapp.com",
@@ -291,17 +303,12 @@ function genSlots(){
 const SLOTS = genSlots();
 
 // ── STATE ─────────────────────────────────────────────────────────────────────
-window._S = {
-  tab:'reserve', isAdmin:false,
-  weekStart: getMonday(new Date()),
-  modal:null, pickedComp:null,
-  form:{ dept:'', name:'', phone:'', ext:'', _dur:1 },
-  bookings:[], closedDates:new Set(), blacklist:new Map(), absCount:{},
-  adminTab:'bookings', adminFilter:{ date:'', computer:'', status:'' },
-  rFrom:'', rTo:'', qPhone:'', qResult:null
-};
+// window._S 已在 Firebase module 提前初始化
+// 這裡補上需要呼叫同步函式的欄位
+window._S.weekStart = getMonday(new Date());
+// form 需要加上 note 欄位（firebase module 版本較舊時的 fallback）
+if(!window._S.form.hasOwnProperty('note')) window._S.form.note = '';
 const S = window._S;
-window._appReady = false;
 
 // ── DATE UTILS ────────────────────────────────────────────────────────────────
 function today(){ return new Date().toISOString().slice(0,10); }
