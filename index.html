@@ -632,11 +632,13 @@ function renderModalHTML(){
 
 function showSuccessModal(name, comp, slots, code, bData){
   const slipId = 'slip-'+Date.now();
-  document.getElementById('modal-area').innerHTML=
-    '<div class="modal-bg"><div class="modal" style="width:460px">'
-    +'<div style="text-align:center;margin-bottom:4px;font-size:32px">✅</div>'
-    +'<div class="modal-title" style="text-align:center;margin-bottom:16px">預約成功！</div>'
-
+  // 用獨立 overlay 元素，不被 renderMain 清掉
+  var overlay = document.createElement('div');
+  overlay.id  = 'success-overlay';
+  document.body.appendChild(overlay);
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:500;display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.innerHTML=
+    '<div style="background:#fff;border-radius:16px;padding:28px;width:480px;max-width:96vw;max-height:92vh;overflow-y:auto">'    +'<div style="text-align:center;margin-bottom:4px;font-size:36px">✅</div>'    +'<div style="font-size:19px;font-weight:700;color:#2F4F4F;text-align:center;margin-bottom:16px">預約成功！</div>'
     // ── 預約確認單（可列印區塊） ──
     +'<div id="'+slipId+'" style="border:2px solid var(--teal);border-radius:12px;padding:18px 20px;margin-bottom:16px;background:var(--teal-lt)">'
     +'<div style="font-size:13px;font-weight:700;color:var(--teal);margin-bottom:12px;letter-spacing:1px">電腦預約確認單</div>'
@@ -659,14 +661,26 @@ function showSuccessModal(name, comp, slots, code, bData){
     +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">'
     +'<button class="btn" style="justify-content:center;font-size:14px" onclick="printSlip(''+slipId+'',''+code+'')">🖨️ 列印確認單</button>'
     +'<button class="btn" style="justify-content:center;font-size:14px" id="copy-btn-'+code+'" onclick="copyCode(''+code+'')">📋 複製取消碼</button>'
-    +'<button class="btn btn-primary" style="justify-content:center;font-size:14px" onclick="closeModal()">確定</button>'
+    +'<button class="btn btn-primary" style="justify-content:center;font-size:14px" onclick="closeSuccessOverlay()">確定，我已記下取消碼</button>'
     +'</div>'
-    +'</div></div>';
+    +'</div>';
+}
+
+function closeSuccessOverlay(){
+  var el=document.getElementById('success-overlay');
+  if(el) el.remove();
 }
 
 function copyCode(code){
-  navigator.clipboard.writeText(code).then(()=>{
-    const btn=document.getElementById('copy-btn-'+code);
+  navigator.clipboard.writeText(code).then(function(){
+    var btn=document.getElementById('copy-btn-'+code);
+    if(btn){ btn.textContent='✅ 已複製！'; btn.style.color='var(--green)'; }
+  }).catch(function(){
+    // fallback for older browsers
+    var ta=document.createElement('textarea');
+    ta.value=code; document.body.appendChild(ta);
+    ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+    var btn=document.getElementById('copy-btn-'+code);
     if(btn){ btn.textContent='✅ 已複製！'; btn.style.color='var(--green)'; }
   });
 }
@@ -735,9 +749,8 @@ async function submitBooking(){
       bData.id = 'LOCAL-'+Date.now();
       S.bookings.push(bData);
     }
-    closeModal();
-    showSuccessModal(name, bData.computer, slots, cancelCode, bData);
-    renderMain();
+    renderMain();                              // 先刷新週視圖
+    showSuccessModal(name, bData.computer, slots, cancelCode, bData); // 再蓋上確認單彈窗
   } catch(e){
     console.error(e);
     toast('❌ 儲存失敗：'+e.message);
