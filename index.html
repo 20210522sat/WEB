@@ -439,10 +439,17 @@ function renderReserve(){
   html+=`</tbody></table></div></div>
 
   <div class="card" style="margin-top:16px">
-    <div class="section-title">查詢我的預約</div>
+    <div class="section-title">查詢 / 取消我的預約</div>
+    <div style="background:var(--teal-lt);border-radius:10px;padding:14px 16px;margin-bottom:14px;font-size:14px;color:var(--text-sub);line-height:1.8">
+      <b style="color:var(--teal)">取消預約方式：</b><br>
+      ① 輸入預約時填寫的電話號碼，點「查詢」<br>
+      ② 找到要取消的預約，點「取消預約」<br>
+      ③ 輸入預約成功時取得的 <b>4 位取消碼</b>，即可完成取消<br>
+      <span style="color:var(--amber);font-weight:600">⚠️ 取消碼印在「預約確認單」上，請列印或拍照保存</span>
+    </div>
     <div class="flex gap-8">
-      <input type="tel" id="q-phone" placeholder="輸入電話號碼" style="max-width:240px" value="${S.qPhone}">
-      <button class="btn btn-primary" onclick="queryMy()">查詢</button>
+      <input type="tel" id="q-phone" placeholder="輸入預約時填寫的電話號碼" style="max-width:260px" value="${S.qPhone}">
+      <button class="btn btn-primary" onclick="queryMy()">查詢我的預約</button>
     </div>
     <div id="q-result" style="margin-top:14px">${renderQueryResult()}</div>
   </div>`;
@@ -451,27 +458,76 @@ function renderReserve(){
 
 function renderQueryResult(){
   if(S.qResult===null) return '';
-  if(!S.qResult.length) return '<p style="color:var(--text-muted);font-size:15px">查無預約紀錄</p>';
-  let html=`<div class="table-wrap"><table class="dtable"><thead><tr>
-    <th>日期</th><th>電腦</th><th>時段</th><th>單位</th><th>聯絡人</th><th>分機</th><th>狀態</th>
-  </tr></thead><tbody>`;
+  if(!S.qResult.length) return '<p style="color:var(--text-muted);font-size:15px;padding:8px 0">查無預約紀錄，請確認電話號碼是否正確</p>';
+  let html='<div class="table-wrap"><table class="dtable"><thead><tr>'
+    +'<th>日期</th><th>電腦</th><th>時段</th><th>單位／姓名</th><th>說明</th><th>狀態</th><th>操作</th>'
+    +'</tr></thead><tbody>';
   S.qResult.sort((a,b)=>b.date.localeCompare(a.date)).forEach(b=>{
-    const st = b.status==='arrived' ? '<span class="badge badge-green">已到</span>'
-             : b.status==='absent'  ? '<span class="badge badge-red">未到</span>'
-             : b.status==='cancelled'? '<span class="badge badge-gray">取消</span>'
-             : '<span class="badge badge-teal">確認</span>';
-    html+=`<tr>
-      <td>${fDate(b.date)}</td><td>電腦 ${b.computer}</td>
-      <td>${b.slots[0]}–${endTime(b.slots)}</td>
-      <td>${b.dept}</td><td style="font-weight:600">${b.name}</td>
-      <td>${b.ext||'—'}</td><td>${st}</td>
-    </tr>`;
+    const st = b.status==='arrived'  ? '<span class="badge badge-green">已到</span>'
+             : b.status==='absent'   ? '<span class="badge badge-red">未到</span>'
+             : b.status==='cancelled'? '<span class="badge badge-gray">已取消</span>'
+             : '<span class="badge badge-teal">確認中</span>';
+    const canCancel = b.status==='confirmed' && b.date >= today();
+    const bid = b.id.replace(/'/g,"\'");
+    const bcode = (b.cancelCode||'').replace(/'/g,"\'");
+    const cancelBtn = canCancel
+      ? '<button class="btn btn-xs btn-danger" onclick="userCancelFlow(''+bid+'',''+bcode+'')">取消預約</button>'
+      : '';
+    html+='<tr>'
+      +'<td><b>'+fDate(b.date)+'</b></td>'
+      +'<td>電腦 '+b.computer+'</td>'
+      +'<td style="white-space:nowrap;font-size:14px">'+b.slots[0]+'–'+endTime(b.slots)+'</td>'
+      +'<td style="font-size:13px">'+b.dept+'<br><b>'+b.name+'</b></td>'
+      +'<td style="color:var(--text-muted);font-size:13px;max-width:120px">'+(b.note||'—')+'</td>'
+      +'<td>'+st+'</td>'
+      +'<td>'+cancelBtn+'</td>'
+      +'</tr>';
   });
-  html+=`</tbody></table></div>`;
+  html+='</tbody></table></div>';
   if(S.blacklist.has(S.qPhone))
-    html+=`<p style="color:var(--red);margin-top:8px;font-size:14px;font-weight:600">⚠️ 此帳號已列入黑名單，無法進行新預約</p>`;
+    html+='<p style="color:var(--red);margin-top:10px;font-size:14px;font-weight:600">⚠️ 此帳號已列入黑名單，無法進行新預約</p>';
   return html;
 }
+
+function userCancelFlow(id, storedCode){
+  var html=''
+    +'<div class="modal-bg" onclick="if(event.target===this)closeModal()">'
+    +'<div class="modal" style="width:400px">'
+    +'<div class="modal-title">取消預約</div>'
+    +'<div style="background:var(--amber-lt);border:1.5px solid var(--amber-md);border-radius:10px;padding:14px 16px;margin-bottom:18px;font-size:14px;color:var(--text-sub);line-height:1.9">'
+    +'<b style="color:var(--amber)">📋 請輸入取消碼</b><br>'
+    +'取消碼是預約成功時顯示的 <b>4 位數字</b>，印在「預約確認單」上。<br>'
+    +'若已列印或拍照，請輸入確認單上的取消碼。'
+    +'</div>'
+    +'<div class="field"><label>取消碼（4 位數字）</label>'
+    +'<input id="cancel-code-input" type="text" inputmode="numeric" maxlength="4" placeholder="請輸入 4 位取消碼"'
+    +' style="font-size:26px;text-align:center;letter-spacing:12px;font-weight:700;padding:12px">'
+    +'</div>'
+    +'<div class="flex gap-8 mt-8">'
+    +'<button class="btn btn-danger w-full" style="justify-content:center;font-size:15px" id="do-cancel-btn">確認取消預約</button>'
+    +'<button class="btn w-full" style="justify-content:center;font-size:15px" onclick="closeModal()">返回</button>'
+    +'</div></div></div>';
+  document.getElementById('modal-area').innerHTML=html;
+  var inp=document.getElementById('cancel-code-input');
+  var btn=document.getElementById('do-cancel-btn');
+  if(inp) inp.focus();
+  function doCancel(){
+    var v=(inp?inp.value:'').trim();
+    if(!v){ toast('請輸入取消碼'); return; }
+    if(v!==String(storedCode)){ toast('❌ 取消碼錯誤，請重新確認'); inp.value=''; inp.focus(); return; }
+    var b=S.bookings.find(function(bk){return bk.id===id;});
+    if(!b){ toast('找不到此筆預約'); return; }
+    b.status='cancelled';
+    if(window._fbUpdateBooking) window._fbUpdateBooking(id,{status:'cancelled'});
+    closeModal();
+    S.qResult=S.bookings.filter(function(bk){return bk.phone===S.qPhone;});
+    document.getElementById('q-result').innerHTML=renderQueryResult();
+    toast('✅ 預約已取消');
+  }
+  if(inp) inp.addEventListener('keydown',function(e){if(e.key==='Enter') doCancel();});
+  if(btn) btn.addEventListener('click', doCancel);
+}
+
 
 function weekNav(dir){ S.weekStart=addDays(S.weekStart,dir*7); renderMain(); }
 function jumpToday(){ S.weekStart=getMonday(new Date()); renderMain(); }
@@ -488,7 +544,7 @@ function queryMy(){
 function openModal(date, startSlot){
   S.modal = { date, startSlot };
   S.pickedComp = null;
-  S.form = { dept:'', name:'', phone:'', ext:'', _dur:1 };
+  S.form = { dept:'', name:'', phone:'', ext:'', note:'', _dur:1 };
   document.getElementById('modal-area').innerHTML = renderModalHTML();
 }
 
@@ -564,11 +620,79 @@ function renderModalHTML(){
         <input id="m-ext" placeholder="如：1234" value="${S.form.ext}" oninput="S.form.ext=this.value">
       </div>
     </div>
+    <div class="field"><label>說明（選填）</label>
+      <input id="m-note" placeholder="如：需要滑鼠、特殊軟體需求…" value="${S.form.note||''}" oninput="S.form.note=this.value">
+    </div>
     <div class="flex gap-8 mt-12">
       <button class="btn btn-primary w-full" style="justify-content:center;font-size:16px" onclick="submitBooking()">確認預約</button>
       <button class="btn w-full" style="justify-content:center;font-size:16px" onclick="closeModal()">取消</button>
     </div>
   </div></div>`;
+}
+
+function showSuccessModal(name, comp, slots, code, bData){
+  const slipId = 'slip-'+Date.now();
+  document.getElementById('modal-area').innerHTML=
+    '<div class="modal-bg"><div class="modal" style="width:460px">'
+    +'<div style="text-align:center;margin-bottom:4px;font-size:32px">✅</div>'
+    +'<div class="modal-title" style="text-align:center;margin-bottom:16px">預約成功！</div>'
+
+    // ── 預約確認單（可列印區塊） ──
+    +'<div id="'+slipId+'" style="border:2px solid var(--teal);border-radius:12px;padding:18px 20px;margin-bottom:16px;background:var(--teal-lt)">'
+    +'<div style="font-size:13px;font-weight:700;color:var(--teal);margin-bottom:12px;letter-spacing:1px">電腦預約確認單</div>'
+    +'<table style="width:100%;border-collapse:collapse;font-size:14px">'
+    +'<tr><td style="color:var(--text-sub);padding:4px 0;width:80px;font-weight:600">日期</td><td style="font-weight:600">'+fDate(bData.date)+'</td></tr>'
+    +'<tr><td style="color:var(--text-sub);padding:4px 0;font-weight:600">電腦</td><td>電腦 '+comp+'</td></tr>'
+    +'<tr><td style="color:var(--text-sub);padding:4px 0;font-weight:600">時段</td><td>'+slots[0]+' – '+endTime(slots)+'（'+((slots.length*0.5).toFixed(1))+'小時）</td></tr>'
+    +'<tr><td style="color:var(--text-sub);padding:4px 0;font-weight:600">單位</td><td>'+bData.dept+'</td></tr>'
+    +'<tr><td style="color:var(--text-sub);padding:4px 0;font-weight:600">姓名</td><td>'+name+'</td></tr>'
+    +'<tr><td style="color:var(--text-sub);padding:4px 0;font-weight:600">電話</td><td>'+bData.phone+(bData.ext?' #'+bData.ext:'')+'</td></tr>'
+    +(bData.note?'<tr><td style="color:var(--text-sub);padding:4px 0;font-weight:600">說明</td><td>'+bData.note+'</td></tr>':'')
+    +'</table>'
+    +'<div style="margin-top:14px;padding:12px 14px;background:var(--amber-lt);border:1.5px dashed var(--amber);border-radius:8px;text-align:center">'
+    +'<div style="font-size:12px;color:var(--amber);font-weight:700;margin-bottom:4px">取消碼（請妥善保存）</div>'
+    +'<div style="font-size:36px;font-weight:700;color:var(--teal);letter-spacing:10px">'+code+'</div>'
+    +'<div style="font-size:12px;color:var(--text-muted);margin-top:4px">請<b>列印確認單</b>或<b>拍照</b>保存此碼<br>取消預約時在「查詢我的預約」輸入電話查詢，再輸入此碼即可取消</div>'
+    +'</div></div>'
+
+    // ── 操作按鈕列 ──
+    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">'
+    +'<button class="btn" style="justify-content:center;font-size:14px" onclick="printSlip(''+slipId+'',''+code+'')">🖨️ 列印確認單</button>'
+    +'<button class="btn" style="justify-content:center;font-size:14px" id="copy-btn-'+code+'" onclick="copyCode(''+code+'')">📋 複製取消碼</button>'
+    +'<button class="btn btn-primary" style="justify-content:center;font-size:14px" onclick="closeModal()">確定</button>'
+    +'</div>'
+    +'</div></div>';
+}
+
+function copyCode(code){
+  navigator.clipboard.writeText(code).then(()=>{
+    const btn=document.getElementById('copy-btn-'+code);
+    if(btn){ btn.textContent='✅ 已複製！'; btn.style.color='var(--green)'; }
+  });
+}
+
+function printSlip(slipId, code){
+  const el=document.getElementById(slipId);
+  if(!el) return;
+  const html='<!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8">'
+    +'<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;600;700&display=swap" rel="stylesheet">'
+    +'<title>電腦預約確認單</title>'
+    +'<style>body{font-family:"Noto Sans TC",sans-serif;padding:32px;max-width:400px;margin:0 auto}'
+    +'.box{border:2px solid #2F4F4F;border-radius:10px;padding:20px}'
+    +'h2{color:#2F4F4F;font-size:16px;margin:0 0 14px}'
+    +'table{width:100%;border-collapse:collapse;font-size:14px}'
+    +'td{padding:5px 0}td:first-child{color:#555;font-weight:600;width:70px}'
+    +'.code-box{margin-top:16px;padding:14px;background:#fef5e6;border:2px dashed #BC7527;border-radius:8px;text-align:center}'
+    +'.code-label{font-size:12px;color:#BC7527;font-weight:700;margin-bottom:4px}'
+    +'.code{font-size:38px;font-weight:700;color:#2F4F4F;letter-spacing:10px}'
+    +'.code-note{font-size:11px;color:#888;margin-top:4px}'
+    +'@media print{body{padding:0}}</style></head><body>'
+    +'<div class="box">'+el.innerHTML+'</div>'
+    +'<script>window.onload=()=>window.print();<\/script>'
+    +'</body></html>';
+  const w=window.open('','_blank');
+  if(w){ w.document.write(html); w.document.close(); }
+  else alert('請允許彈出視窗以列印');
 }
 
 function selComp(c){
@@ -584,6 +708,7 @@ async function submitBooking(){
   const name  = (document.getElementById('m-name')?.value  || S.form.name).trim();
   const phone = (document.getElementById('m-phone')?.value || S.form.phone).trim();
   const ext   = (document.getElementById('m-ext')?.value   || S.form.ext).trim();
+  const note  = (document.getElementById('m-note')?.value  || S.form.note||'').trim();
   if(!dept)       { toast('請填寫單位');   return; }
   if(!name)       { toast('請填寫姓名');   return; }
   if(!phone)      { toast('請填寫電話');   return; }
@@ -596,9 +721,10 @@ async function submitBooking(){
   const bs    = bookedSet(S.modal.date, S.pickedComp);
   for(const sl of slots) if(bs.has(sl)){ toast('選擇的時段已被預約，請重新選擇'); return; }
 
+  const cancelCode = String(Math.floor(1000+Math.random()*9000));
   const bData = {
     date: S.modal.date, computer: S.pickedComp, slots,
-    dept, name, phone, ext,
+    dept, name, phone, ext, note, cancelCode,
     status:'confirmed', createdAt: new Date().toISOString()
   };
   try{
@@ -610,7 +736,7 @@ async function submitBooking(){
       S.bookings.push(bData);
     }
     closeModal();
-    toast(`✅ 預約成功！${name} / 電腦 ${bData.computer} / ${slots[0]}–${endTime(slots)}`);
+    showSuccessModal(name, bData.computer, slots, cancelCode, bData);
     renderMain();
   } catch(e){
     console.error(e);
@@ -693,7 +819,7 @@ function renderAdminBk(){
   </div>
   <div class="card" style="margin-top:16px">
   <div class="table-wrap"><table class="dtable"><thead><tr>
-    <th>日期</th><th>電腦</th><th>時段</th><th>單位</th><th>姓名</th><th>電話</th><th>分機</th><th>狀態</th><th>操作</th>
+    <th>日期</th><th>電腦</th><th>時段</th><th>單位</th><th>姓名</th><th>電話</th><th>分機</th><th>說明</th><th>狀態</th><th>操作</th>
   </tr></thead><tbody>
   ${f.length ? f.map(b=>{
     const stBadge = b.status==='arrived'  ? '<span class="badge badge-green">已到</span>'
@@ -710,7 +836,9 @@ function renderAdminBk(){
       <td>${fDate(b.date)}</td><td>電腦 ${b.computer}</td>
       <td style="white-space:nowrap">${b.slots[0]}–${endTime(b.slots)}</td>
       <td>${b.dept}</td><td style="font-weight:600">${b.name}${isBlk}</td>
-      <td>${b.phone}</td><td>${b.ext||'—'}</td><td>${stBadge}</td>
+      <td>${b.phone}</td><td>${b.ext||'—'}</td>
+      <td style="max-width:150px"><div style="display:flex;align-items:center;gap:6px"><span style="color:var(--text-muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:110px">${b.note||'—'}</span><button class="btn btn-xs" style="flex-shrink:0;padding:2px 8px;font-size:12px" onclick="editNote('${b.id}','${(b.note||'').replace(/'/g,'&#39;')}')">編輯</button></div></td>
+      <td>${stBadge}</td>
       <td><div class="row-actions">${acts}</div></td>
     </tr>`;
   }).join('') : '<tr><td colspan="9" style="text-align:center;padding:28px;color:var(--text-muted)">無資料</td></tr>'}
@@ -731,6 +859,33 @@ async function markSt(id, status){
     }
   }
   if(window._fbUpdateBooking) await window._fbUpdateBooking(id,{status});
+  renderMain();
+}
+
+function editNote(id, currentNote){
+  document.getElementById('modal-area').innerHTML=
+    '<div class="modal-bg" onclick="if(event.target===this)closeModal()">'
+    +'<div class="modal" style="width:400px">'
+    +'<div class="modal-title">編輯說明</div>'
+    +'<div class="field"><label>說明內容</label>'
+    +'<textarea id="edit-note-input" rows="3" placeholder="輸入說明（可留空）"'
+    +' style="resize:none;font-size:15px">'+currentNote.replace(/&#39;/g,"'")+'</textarea>'
+    +'</div>'
+    +'<div class="flex gap-8 mt-8">'
+    +'<button class="btn btn-primary w-full" style="justify-content:center" onclick="saveNote(''+id+'')">儲存</button>'
+    +'<button class="btn w-full" style="justify-content:center" onclick="closeModal()">取消</button>'
+    +'</div></div></div>';
+  setTimeout(function(){ var el=document.getElementById('edit-note-input'); if(el) el.focus(); },120);
+}
+
+async function saveNote(id){
+  const val = (document.getElementById('edit-note-input')?.value||'').trim();
+  const b = S.bookings.find(b=>b.id===id);
+  if(!b){ toast('找不到此預約'); return; }
+  b.note = val;
+  if(window._fbUpdateBooking) await window._fbUpdateBooking(id, {note: val});
+  closeModal();
+  toast('說明已更新');
   renderMain();
 }
 
@@ -893,7 +1048,7 @@ function renderReport(){
   <div class="card" style="margin-top:16px">
     <div class="section-title">預約清單（${f.length} 筆）</div>
     <div class="table-wrap"><table class="dtable"><thead><tr>
-      <th>日期</th><th>電腦</th><th>單位</th><th>姓名</th><th>電話</th><th>分機</th><th>時段</th><th>時數</th><th>狀態</th>
+      <th>日期</th><th>電腦</th><th>單位</th><th>姓名</th><th>電話</th><th>分機</th><th>說明</th><th>時段</th><th>時數</th><th>狀態</th>
     </tr></thead><tbody>
     ${f.length ? [...f].sort((a,b)=>b.date.localeCompare(a.date)).map(b=>{
       const st=b.status==='arrived'?'已到':b.status==='absent'?'未到':'確認';
@@ -920,16 +1075,16 @@ function stLabel(s){ return s==='arrived'?'已到':s==='absent'?'未到':s==='ca
 
 function exportCSV(){
   const f=getExport();
-  const rows=[['日期','電腦','單位','姓名','電話','分機','開始','結束','時數','狀態']];
-  f.forEach(b=>rows.push([fDate(b.date),`電腦${b.computer}`,b.dept,b.name,b.phone,b.ext||'',b.slots[0],endTime(b.slots),(b.slots.length*0.5).toFixed(1),stLabel(b.status)]));
+  const rows=[['日期','電腦','單位','姓名','電話','分機','說明','開始','結束','時數','狀態']];
+  f.forEach(b=>rows.push([fDate(b.date),`電腦${b.computer}`,b.dept,b.name,b.phone,b.ext||'',b.note||'',b.slots[0],endTime(b.slots),(b.slots.length*0.5).toFixed(1),stLabel(b.status)]));
   const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
   dlBlob('\uFEFF'+csv,'text/csv',`預約紀錄_${today()}.csv`);
   toast('CSV 已下載');
 }
 function exportXLSX(){
   const f=getExport();
-  const ws1=[['日期','電腦','單位','姓名','電話','分機','開始','結束','時數','狀態']];
-  f.forEach(b=>ws1.push([fDate(b.date),`電腦${b.computer}`,b.dept,b.name,b.phone,b.ext||'',b.slots[0],endTime(b.slots),+(b.slots.length*0.5).toFixed(1),stLabel(b.status)]));
+  const ws1=[['日期','電腦','單位','姓名','電話','分機','說明','開始','結束','時數','狀態']];
+  f.forEach(b=>ws1.push([fDate(b.date),`電腦${b.computer}`,b.dept,b.name,b.phone,b.ext||'',b.note||'',b.slots[0],endTime(b.slots),+(b.slots.length*0.5).toFixed(1),stLabel(b.status)]));
   const active=f.filter(b=>b.status!=='cancelled');
   const totalH=active.reduce((s,b)=>s+b.slots.length*0.5,0);
   const ws2=[['項目','數值'],['總筆數',f.length],['總時數',+totalH.toFixed(1)],
@@ -960,7 +1115,7 @@ function printPDF(){
   const maxCH=Math.max(...Object.values(compH),1);
   const rows=[...f].sort((a,b)=>b.date.localeCompare(a.date)).map(b=>
     `<tr><td>${fDate(b.date)}</td><td>電腦${b.computer}</td><td>${b.dept}</td><td>${b.name}</td>
-     <td>${b.phone}${b.ext?' #'+b.ext:''}</td><td>${b.slots[0]}–${endTime(b.slots)}</td>
+     <td>${b.phone}${b.ext?' #'+b.ext:''}</td><td>${b.note||'—'}</td><td>${b.slots[0]}–${endTime(b.slots)}</td>
      <td>${(b.slots.length*0.5).toFixed(1)}h</td><td>${stLabel(b.status)}</td></tr>`).join('');
 
   const html=`<!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8">
@@ -1004,7 +1159,7 @@ tr:nth-child(even) td{background:#f4f8f4}
   </div>
 </div>
 <div class="stitle">預約清單（${f.length} 筆）</div>
-<table><thead><tr><th>日期</th><th>電腦</th><th>單位</th><th>姓名</th><th>電話/分機</th><th>時段</th><th>時數</th><th>狀態</th></tr></thead>
+<table><thead><tr><th>日期</th><th>電腦</th><th>單位</th><th>姓名</th><th>電話/分機</th><th>說明</th><th>時段</th><th>時數</th><th>狀態</th></tr></thead>
 <tbody>${rows}</tbody></table>
 <script>window.onload=()=>window.print();<\/script>
 </body></html>`;
