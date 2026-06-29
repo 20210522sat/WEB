@@ -63,28 +63,41 @@ window._fbUpdateAbs = function(phone, count){
   return _db.ref('absCount/'+_safeKey(phone)).set({phone:phone, count:count});
 };
 
+// ══ 安全存取 window._S（防止任何時序問題）═══════════════════════════════════
+function _getS(){
+  if(!window._S) window._S = {
+    tab:'reserve', isAdmin:false, weekStart:null,
+    modal:null, pickedComp:null,
+    form:{ dept:'', name:'', phone:'', ext:'', note:'', _dur:1 },
+    bookings:[], closedDates:new Set(), blacklist:new Map(), absCount:{},
+    adminTab:'bookings', adminFilter:{ date:'', computer:'', status:'' },
+    rFrom:'', rTo:'', qPhone:'', qResult:null
+  };
+  return window._S;
+}
+
 // ══ 即時監聽 ═════════════════════════════════════════════════════════════════
 _db.ref('bookings').on('value', function(snap){
   var data = snap.val() || {};
-  window._S.bookings = Object.entries(data).map(function(e){ return Object.assign({id:e[0]}, e[1]); });
+  _getS().bookings = Object.entries(data).map(function(e){ return Object.assign({id:e[0]}, e[1]); });
   if(window._appReady) renderMain();
 });
 _db.ref('closedDates').on('value', function(snap){
   var data = snap.val() || {};
-  window._S.closedDates = new Set(Object.keys(data));
+  _getS().closedDates = new Set(Object.keys(data));
   if(window._appReady) renderMain();
 });
 _db.ref('blacklist').on('value', function(snap){
   var data = snap.val() || {};
-  window._S.blacklist = new Map(
+  _getS().blacklist = new Map(
     Object.values(data).filter(function(v){ return v && v.phone; }).map(function(v){ return [v.phone, v]; })
   );
   if(window._appReady) renderMain();
 });
 _db.ref('absCount').on('value', function(snap){
   var data = snap.val() || {};
-  window._S.absCount = {};
-  Object.values(data).forEach(function(v){ if(v && v.phone) window._S.absCount[v.phone] = v.count; });
+  _getS().absCount = {};
+  Object.values(data).forEach(function(v){ if(v && v.phone) _getS().absCount[v.phone] = v.count; });
 });
 
 // ══ 等三個節點都收到初始值後啟動 App ══════════════════════════════════════════
