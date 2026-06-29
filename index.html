@@ -118,13 +118,12 @@ table.dtable tr:hover td{background:#f7faf7}
 
 <div id="app" style="display:none">
   <div class="topbar">
-    <div class="logo">
+    <div class="logo" id="logo-btn" onclick="logoClick()" style="cursor:pointer;user-select:none" title="">
       <div class="logo-icon">電</div>
       電腦預約系統
     </div>
     <div class="nav-tabs">
       <button class="nav-tab active" id="tab-reserve" onclick="showTab('reserve')">預約</button>
-      <button class="nav-tab" id="tab-admin" onclick="showTab('admin')">管理後台</button>
       <button class="nav-tab" id="tab-report" onclick="showTab('report')">統計報表</button>
     </div>
   </div>
@@ -347,12 +346,34 @@ function renderMain(){
   document.getElementById('main').innerHTML =
     S.tab==='reserve'?renderReserve():S.tab==='admin'?renderAdmin():renderReport();
 }
+function adminLogout(){
+  S.isAdmin=false; S.tab='reserve';
+  ['reserve','report'].forEach(function(k){
+    var el=document.getElementById('tab-'+k);
+    if(el) el.classList.toggle('active',k==='reserve');
+  });
+  renderMain();
+}
+var _logoClicks=0, _logoTimer=null;
+function logoClick(){
+  _logoClicks++;
+  clearTimeout(_logoTimer);
+  _logoTimer=setTimeout(function(){ _logoClicks=0; },1500);
+  if(_logoClicks>=5){
+    _logoClicks=0;
+    if(!S.isAdmin){ showLoginModal(); } else { showTab('admin'); }
+  }
+}
+
 function showTab(t){
   if(t==='admin'&&!S.isAdmin){ showLoginModal(); return; }
   S.tab=t;
-  ['reserve','admin','report'].forEach(function(k){
-    document.getElementById('tab-'+k).classList.toggle('active',k===t);
+  // admin tab 只在登入後動態存在
+  ['reserve','report'].forEach(function(k){
+    var el=document.getElementById('tab-'+k);
+    if(el) el.classList.toggle('active',k===t);
   });
+  // admin active 狀態由 renderAdmin 內的登出按鈕處理
   renderMain();
 }
 
@@ -597,16 +618,16 @@ function renderModalHTML(){
     +'<div class="field"><label>選擇電腦</label>'+compHtml+'</div>'
     +durHtml
     +'<hr class="divider">'
-    +'<div class="field"><label>單位 / 部門</label>'
+    +'<div class="field"><label>單位 <span style="color:var(--red)">*</span></label>'
     +'<input id="m-dept" placeholder="如：資訊組" value="'+S.form.dept+'" oninput="S.form.dept=this.value"></div>'
-    +'<div class="field"><label>姓名</label>'
+    +'<div class="field"><label>姓名 <span style="color:var(--red)">*</span></label>'
     +'<input id="m-name" placeholder="請輸入姓名" value="'+S.form.name+'" oninput="S.form.name=this.value"></div>'
-    +'<div class="field"><label>聯絡電話（可加分機，如：0912-345-678 #1234）</label>'
-    +'<input id="m-phone" type="tel" placeholder="0912-345-678 #1234" value="'+S.form.phone+'" oninput="S.form.phone=this.value"></div>'
+    +'<div class="field"><label>聯絡電話／分機 <span style="color:var(--red)">*</span> <span style="font-size:12px;color:var(--text-muted);font-weight:400">（手機或分機皆可填）</span></label>'
+    +'<input id="m-phone" type="tel" placeholder="0912-345-678 或 #1234" value="'+S.form.phone+'" oninput="S.form.phone=this.value"></div>'
     +'<div class="field"><label>電子信箱 <span style="color:var(--red)">*</span></label>'
     +'<input id="m-email" type="email" placeholder="your@email.com" value="'+S.form.email+'" oninput="S.form.email=this.value"></div>'
-    +'<div class="field"><label>說明（選填）</label>'
-    +'<input id="m-note" placeholder="如：需要滑鼠、特殊軟體需求…" value="'+S.form.note+'" oninput="S.form.note=this.value"></div>'
+    +'<div class="field"><label>備註</label>'
+    +'<input id="m-note" placeholder="" value="'+S.form.note+'" oninput="S.form.note=this.value"></div>'
     +'<div class="flex gap-8 mt-12">'
     +'<button class="btn btn-primary w-full" style="justify-content:center;font-size:16px" onclick="submitBooking()">確認預約</button>'
     +'<button class="btn w-full" style="justify-content:center;font-size:16px" onclick="closeModal()">取消</button>'
@@ -738,11 +759,13 @@ function doLogin(){
   var pw=document.getElementById('adm-pw')?document.getElementById('adm-pw').value:'';
   if(pw===ADMIN_PASS){
     S.isAdmin=true; closeModal(); S.tab='admin';
-    ['reserve','admin','report'].forEach(function(k){
-      document.getElementById('tab-'+k).classList.toggle('active',k==='admin');
+    // 只把非admin tab設為非active
+    ['reserve','report'].forEach(function(k){
+      var el=document.getElementById('tab-'+k);
+      if(el) el.classList.remove('active');
     });
     renderMain();
-  } else toast('密碼錯誤');
+  } else { toast('密碼錯誤'); }
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -760,7 +783,7 @@ function renderAdmin(){
     bar+='<button class="btn'+(S.adminTab===t[0]?' '+t[2]:'')+'" onclick="setAdminTab(\''+t[0]+'\')">'+t[1]+'</button>';
   });
   bar+='<span style="margin-left:auto;font-size:14px;color:var(--text-muted)">管理者模式</span>'
-    +'<button class="btn btn-sm" onclick="S.isAdmin=false;showTab(\'reserve\')">登出</button></div>';
+    +'<button class="btn btn-sm" onclick="adminLogout()">登出</button></div>';
   return bar+(S.adminTab==='bookings'?renderAdminBk():S.adminTab==='closed'?renderAdminClosed():S.adminTab==='blacklist'?renderAdminBL():renderAdminTrash());
 }
 function setAdminTab(t){ S.adminTab=t; renderMain(); }
@@ -811,8 +834,8 @@ function renderAdminBk(){
         if(b.status!=='arrived') acts+='<button class="btn btn-xs btn-green" data-id="'+b.id+'" data-st="arrived" onclick="markSt(this)">已到</button>';
         if(b.status!=='absent')  acts+='<button class="btn btn-xs btn-red" data-id="'+b.id+'" data-st="absent" onclick="markSt(this)">未到</button>';
         acts+='<button class="btn btn-xs" data-id="'+b.id+'" data-st="cancelled" onclick="markSt(this)">取消</button>';
-        acts+='<button class="btn btn-xs" style="background:#f5f0f0;color:#a42a2b;border-color:#f5c6c6" data-id="'+b.id+'" onclick="deleteBooking(this)">🗑️ 刪除</button>';
-      } else acts='<span style="color:var(--text-muted);font-size:13px">—</span>';
+      }
+      acts+='<button class="btn btn-xs" style="background:#f5f0f0;color:#a42a2b;border-color:#f5c6c6" data-id="'+b.id+'" onclick="deleteBooking(this)">🗑️ 刪除</button>';
       html+='<tr>'
         +'<td>'+fDate(b.date)+'</td><td>電腦 '+b.computer+'</td>'
         +'<td style="white-space:nowrap">'+toArr(b.slots)[0]+'–'+endTime(b.slots)+'</td>'
