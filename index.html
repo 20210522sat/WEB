@@ -12,7 +12,7 @@
 :root{
   --teal:#2F4F4F;--teal-lt:#eaf1f1;--teal-md:#b0c8c8;
   --amber:#BC7527;--amber-lt:#fef5e6;--amber-md:#f0d49a;
-  --gold:#DAA520;--gold-lt:#fefae8;
+  --gold:#EFEEE6;--gold-lt:#f8f7f2;--gold-dark:#3a3830;
   --green:#018948;--green-lt:#e8f5ee;--green-md:#9fd8bc;
   --red:#a42a2b;--red-lt:#fdf0f0;--red-md:#f5c6c6;
   --bg:#f7f8f6;--white:#fff;
@@ -24,11 +24,11 @@
 body{font-family:'Noto Sans TC',system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:16px;line-height:1.6;min-height:100vh}
 .topbar{background:var(--teal);padding:0 28px;display:flex;align-items:center;justify-content:space-between;height:64px;position:sticky;top:0;z-index:200;box-shadow:0 2px 10px rgba(47,79,79,0.22)}
 .logo{font-size:19px;font-weight:700;display:flex;align-items:center;gap:10px;color:#fff;white-space:nowrap}
-.logo-icon{width:34px;height:34px;background:var(--gold);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--teal);font-size:16px;font-weight:700}
+.logo-icon{width:34px;height:34px;background:var(--gold);border-radius:8px;display:flex;align-items:center;justify-content:center;color:#1a2424;border:1px solid rgba(0,0,0,0.15);font-size:16px;font-weight:700}
 .nav-tabs{display:flex;gap:4px}
 .nav-tab{padding:8px 22px;border-radius:8px;border:none;background:transparent;cursor:pointer;font-size:15px;font-family:inherit;color:rgba(255,255,255,.78);font-weight:500;transition:all .13s}
 .nav-tab:hover{background:rgba(255,255,255,.13);color:#fff}
-.nav-tab.active{background:var(--gold);color:var(--teal);font-weight:700}
+.nav-tab.active{background:var(--gold);color:var(--gold-dark,#2F4F4F);font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,0.15)}
 .main{padding:24px 28px;max-width:1340px;margin:0 auto}
 .card{background:var(--white);border:1px solid var(--border);border-radius:14px;padding:24px 26px}
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
@@ -41,7 +41,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--teal);box-shadow:0 0 
 .btn{padding:9px 20px;border-radius:8px;border:1px solid var(--border-md);background:transparent;cursor:pointer;font-size:15px;font-family:inherit;font-weight:500;color:var(--text);display:inline-flex;align-items:center;gap:6px;transition:all .12s;white-space:nowrap}
 .btn:hover{background:var(--bg)}
 .btn-primary{background:var(--teal);color:#fff;border-color:var(--teal)}.btn-primary:hover{background:#1d3535}
-.btn-gold{background:var(--gold);color:var(--teal);border-color:var(--gold);font-weight:700}.btn-gold:hover{background:#b8920f}
+.btn-gold{background:var(--gold);color:#1a2424;border-color:rgba(0,0,0,0.2);font-weight:700}.btn-gold:hover{background:#e0dfce}
 .btn-amber{background:var(--amber);color:#fff;border-color:var(--amber)}.btn-amber:hover{background:#9a5e1e}
 .btn-green{background:var(--green);color:#fff;border-color:var(--green)}.btn-green:hover{background:#016a38}
 .btn-red{background:var(--red);color:#fff;border-color:var(--red)}.btn-red:hover{background:#8a2122}
@@ -174,8 +174,8 @@ var S = {
   tab:'reserve', isAdmin:false,
   weekStart:null,
   modal:null, pickedComp:null,
-  form:{ dept:'', name:'', phone:'', ext:'', note:'', _dur:1 },
-  bookings:[], closedDates:{}, blacklist:{}, absCount:{},
+  form:{ dept:'', name:'', phone:'', email:'', note:'', _dur:1 },
+  bookings:[], trash:[], closedDates:{}, blacklist:{}, absCount:{},
   adminTab:'bookings', adminFilter:{ date:'', computer:'', status:'' },
   rFrom:'', rTo:'', qPhone:'', qResult:null
 };
@@ -203,6 +203,25 @@ function fbAddBooking(data){
   return r.set(data).then(function(){ return r.key; });
 }
 function fbUpdate(id,patch){ return DB.ref('bookings/'+id).update(patch); }
+function fbDelete(id){
+  // 軟刪除：移到 trash 節點，保留 30 天
+  return DB.ref('bookings/'+id).once('value').then(function(snap){
+    var data=snap.val(); if(!data) return;
+    data._deletedAt=new Date().toISOString();
+    return DB.ref('trash/'+id).set(data).then(function(){
+      return DB.ref('bookings/'+id).remove();
+    });
+  });
+}
+function fbRestore(id){
+  return DB.ref('trash/'+id).once('value').then(function(snap){
+    var data=snap.val(); if(!data) return;
+    delete data._deletedAt;
+    return DB.ref('bookings/'+id).set(data).then(function(){
+      return DB.ref('trash/'+id).remove();
+    });
+  });
+}
 function fbAddClosed(d)    { return DB.ref('closedDates/'+d).set(true); }
 function fbDelClosed(d)    { return DB.ref('closedDates/'+d).remove(); }
 function fbAddBL(phone,info){
@@ -244,6 +263,19 @@ DB.ref('absCount').on('value', function(snap){
 // Start after initial load of 3 key nodes
 var _loaded=0;
 function _checkReady(){ if(++_loaded>=3) startApp(); }
+DB.ref('trash').on('value', function(snap){
+  var data=snap.val()||{};
+  S.trash=Object.keys(data).map(function(k){ return Object.assign({id:k},data[k]); });
+  // 自動清除超過30天的
+  var now=Date.now();
+  Object.keys(data).forEach(function(k){
+    if(data[k]._deletedAt){
+      var age=now-new Date(data[k]._deletedAt).getTime();
+      if(age>30*24*3600*1000) DB.ref('trash/'+k).remove();
+    }
+  });
+  if(window._appReady&&S.adminTab==='bookings') renderMain();
+});
 DB.ref('bookings').once('value',    function(){ _checkReady(); });
 DB.ref('closedDates').once('value', function(){ _checkReady(); });
 DB.ref('blacklist').once('value',   function(){ _checkReady(); });
@@ -266,9 +298,16 @@ function isHoliday(s){ return !!TW_HOLIDAYS[s]; }
 function isClosed(s){ return !!S.closedDates[s]||isWeekend(s)||isHoliday(s); }
 function isPastDate(s){ return s<today(); }
 function slotMin(s){ var p=s.split(':'); return parseInt(p[0])*60+parseInt(p[1]); }
+function toArr(slots){
+  // Firebase可能把array存成object {0:'09:00',1:'09:30'}，統一轉回array
+  if(Array.isArray(slots)) return slots;
+  return Object.keys(slots).sort(function(a,b){return+a-+b;}).map(function(k){return slots[k];});
+}
 function endTime(slots){
-  var so=slots.slice().sort(); var em=slotMin(so[so.length-1])+30;
-  return (em/60|0<10?'0':'')+(em/60|0)+':'+(em%60===0?'00':'30');
+  var so=toArr(slots).slice().sort();
+  var em=slotMin(so[so.length-1])+30;
+  var hh=em/60|0; var mm=em%60;
+  return (hh<10?'0':'')+hh+':'+(mm===0?'00':'30');
 }
 function nextId(){ return 'B'+Date.now().toString(36).toUpperCase(); }
 
@@ -293,11 +332,11 @@ function dayCompBks(date,comp){
 }
 function bookedSet(date,comp){
   var s={};
-  dayCompBks(date,comp).forEach(function(b){ b.slots.forEach(function(sl){ s[sl]=1; }); });
+  dayCompBks(date,comp).forEach(function(b){ toArr(b.slots).forEach(function(sl){ s[sl]=1; }); });
   return s;
 }
 function getSlotBk(date,comp,slot){
-  return dayCompBks(date,comp).find(function(b){ return b.slots.indexOf(slot)>=0; });
+  return dayCompBks(date,comp).find(function(b){ return toArr(b.slots).indexOf(slot)>=0; });
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -373,7 +412,7 @@ function renderReserve(){
       if(!notAvail){
         COMPUTERS.forEach(function(c){
           var bk=getSlotBk(d,c,slot);
-          if(bk&&bk.slots[0]===slot){
+          if(bk&&toArr(bk.slots)[0]===slot){
             chips+='<div class="booking-chip '+CHIP_CLS[c-1]+'" title="電腦'+c+' | '+bk.dept+' | '+bk.name+' | '+bk.phone+(bk.ext?' #'+bk.ext:'')+'">'
               +'<div class="chip-name">C'+c+' '+bk.name+'</div>'
               +'<div class="chip-sub">'+bk.dept+(bk.ext?' #'+bk.ext:' '+bk.phone.slice(-4))+'</div></div>';
@@ -390,6 +429,8 @@ function renderReserve(){
   });
   html+='</tbody></table></div></div>';
 
+  // Notice card
+  html+='<div class="card" style="margin-top:16px;border-left:4px solid var(--teal)">'    +'<div class="section-title" style="margin-bottom:12px">📋 使用說明</div>'    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:14px;color:var(--text-sub);line-height:2">'    +'<div>'    +'<div>📌 <b>開放時間</b>：週一至週五 09:00–17:00</div>'    +'<div>⏱️ <b>每次最多預約 4 小時</b>（以 30 分鐘為單位）</div>'    +'<div>🔄 若後續時段無人預約，可向工作人員辦理<b>現場續借</b></div>'    +'<div>🚫 累積 <b>3 次預約未到</b>將列入黑名單，停止預約資格</div>'    +'</div>'    +'<div>'    +'<div>🔑 <b>取消預約</b>：查詢後輸入登記<b>電子信箱</b>驗證即可</div>'    +'<div>📞 <b>問題諮詢</b>請撥分機 <b>#10749</b></div>'    +'<div>📧 <a href="mailto:18118@hosp.nycu.edu.tw" style="color:var(--teal);font-weight:600">18118@hosp.nycu.edu.tw</a></div>'    +'</div>'    +'</div>'    +'</div>';
   // Query section
   html+='<div class="card" style="margin-top:16px">'
     +'<div class="section-title">查詢 / 取消我的預約</div>'
@@ -397,8 +438,7 @@ function renderReserve(){
     +'<b style="color:var(--teal)">取消預約方式</b><br>'
     +'① 輸入預約電話，點「查詢」<br>'
     +'② 找到要取消的那筆，點「取消預約」<br>'
-    +'③ 輸入預約成功時取得的 <b>4 位取消碼</b> 即可完成<br>'
-    +'<span style="color:var(--amber);font-weight:600">⚠️ 取消碼印在預約確認單上，請列印或拍照保存</span>'
+    +'③ 輸入預約時登記的 <b>電子信箱</b> 驗證即可完成取消'
     +'</div>'
     +'<div class="flex gap-8">'
     +'<input type="tel" id="q-phone" placeholder="輸入預約時填寫的電話號碼" style="max-width:280px" value="'+S.qPhone+'">'
@@ -415,7 +455,7 @@ function renderQueryResult(){
   var html='<div class="table-wrap"><table class="dtable"><thead><tr>'
     +'<th>日期</th><th>電腦</th><th>時段</th><th>單位／姓名</th><th>說明</th><th>狀態</th><th>操作</th>'
     +'</tr></thead><tbody>';
-  var sorted=S.qResult.slice().sort(function(a,b){ return b.date.localeCompare(a.date); });
+  var sorted=S.qResult.slice().sort(function(a,b){ return b.date.localeCompare(a.date); }); sorted.forEach(function(b){ b.slots=toArr(b.slots); });
   sorted.forEach(function(b){
     var st=b.status==='arrived' ?'<span class="badge badge-green">已到</span>'
           :b.status==='absent'  ?'<span class="badge badge-red">未到</span>'
@@ -423,12 +463,12 @@ function renderQueryResult(){
           :'<span class="badge badge-teal">確認中</span>';
     var canCancel=b.status==='confirmed'&&b.date>=today();
     var cancelBtn=canCancel
-      ?'<button class="btn btn-xs btn-danger" data-bid="'+b.id+'" data-bcode="'+(b.cancelCode||'')+'" onclick="userCancelFlow(this)">取消預約</button>'
+      ?'<button class="btn btn-xs btn-danger" data-bid="'+b.id+'" onclick="userCancelFlow(this)">取消預約</button>'
       :'';
     html+='<tr>'
       +'<td><b>'+fDate(b.date)+'</b></td>'
       +'<td>電腦 '+b.computer+'</td>'
-      +'<td style="white-space:nowrap;font-size:14px">'+b.slots[0]+'–'+endTime(b.slots)+'</td>'
+      +'<td style="white-space:nowrap;font-size:14px">'+toArr(b.slots)[0]+'–'+endTime(b.slots)+'</td>'
       +'<td style="font-size:13px">'+b.dept+'<br><b>'+b.name+'</b></td>'
       +'<td style="color:var(--text-muted);font-size:13px;max-width:120px">'+(b.note||'—')+'</td>'
       +'<td>'+st+'</td>'
@@ -456,17 +496,18 @@ function queryMy(){
 // USER CANCEL FLOW
 // ══════════════════════════════════════════════════════════════════
 function userCancelFlow(btn){
-  var id=btn.dataset.bid, storedCode=btn.dataset.bcode;
+  var id=btn.dataset.bid;
+  var b=S.bookings.find(function(bk){ return bk.id===id; });
+  var storedEmail=b?b.email:'';
   var html='<div class="modal-bg" onclick="if(event.target===this)closeModal()">'
     +'<div class="modal" style="width:400px">'
     +'<div class="modal-title">取消預約</div>'
-    +'<div style="background:var(--amber-lt);border:1.5px solid var(--amber-md);border-radius:10px;padding:14px 16px;margin-bottom:18px;font-size:14px;color:var(--text-sub);line-height:1.9">'
-    +'<b style="color:var(--amber)">📋 請輸入取消碼</b><br>'
-    +'取消碼是預約成功後顯示的 <b>4 位數字</b>，印在「預約確認單」上。'
+    +'<div style="background:var(--teal-lt);border:1.5px solid var(--teal-md);border-radius:10px;padding:14px 16px;margin-bottom:18px;font-size:14px;color:var(--text-sub);line-height:1.9">'
+    +'請輸入預約時填寫的<b>電子信箱</b>進行身份驗證'
     +'</div>'
-    +'<div class="field"><label>取消碼（4 位數字）</label>'
-    +'<input id="cc-input" type="text" inputmode="numeric" maxlength="4" placeholder="請輸入 4 位取消碼"'
-    +' style="font-size:26px;text-align:center;letter-spacing:12px;font-weight:700;padding:12px">'
+    +'<div class="field"><label>電子信箱</label>'
+    +'<input id="cc-input" type="email" placeholder="your@email.com"'
+    +' style="font-size:16px;padding:12px">'
     +'</div>'
     +'<div id="cc-err" style="color:var(--red);font-size:14px;min-height:20px;margin-bottom:8px"></div>'
     +'<div class="flex gap-8">'
@@ -478,12 +519,12 @@ function userCancelFlow(btn){
   var errEl=document.getElementById('cc-err');
   if(inp) inp.focus();
   function doCancel(){
-    var v=(inp?inp.value:'').trim();
-    if(!v){ errEl.textContent='請輸入取消碼'; return; }
-    if(v!==String(storedCode)){ errEl.textContent='❌ 取消碼錯誤，請重新確認'; inp.value=''; inp.focus(); return; }
-    var b=S.bookings.find(function(bk){ return bk.id===id; });
-    if(!b){ toast('找不到此筆預約'); return; }
-    b.status='cancelled';
+    var v=(inp?inp.value:'').trim().toLowerCase();
+    if(!v){ errEl.textContent='請輸入電子信箱'; return; }
+    if(v!==String(storedEmail).toLowerCase()){ errEl.textContent='❌ 信箱不符，請確認後再試'; inp.value=''; inp.focus(); return; }
+    var bk=S.bookings.find(function(bk){ return bk.id===id; });
+    if(!bk){ toast('找不到此筆預約'); return; }
+    bk.status='cancelled';
     fbUpdate(id,{status:'cancelled'});
     closeModal();
     S.qResult=S.bookings.filter(function(bk){ return bk.phone===S.qPhone; });
@@ -560,12 +601,10 @@ function renderModalHTML(){
     +'<input id="m-dept" placeholder="如：資訊組" value="'+S.form.dept+'" oninput="S.form.dept=this.value"></div>'
     +'<div class="field"><label>姓名</label>'
     +'<input id="m-name" placeholder="請輸入姓名" value="'+S.form.name+'" oninput="S.form.name=this.value"></div>'
-    +'<div class="grid-2">'
-    +'<div class="field"><label>聯絡電話</label>'
-    +'<input id="m-phone" type="tel" placeholder="0912-345-678" value="'+S.form.phone+'" oninput="S.form.phone=this.value"></div>'
-    +'<div class="field"><label>分機（選填）</label>'
-    +'<input id="m-ext" placeholder="如：1234" value="'+S.form.ext+'" oninput="S.form.ext=this.value"></div>'
-    +'</div>'
+    +'<div class="field"><label>聯絡電話（可加分機，如：0912-345-678 #1234）</label>'
+    +'<input id="m-phone" type="tel" placeholder="0912-345-678 #1234" value="'+S.form.phone+'" oninput="S.form.phone=this.value"></div>'
+    +'<div class="field"><label>電子信箱 <span style="color:var(--red)">*</span></label>'
+    +'<input id="m-email" type="email" placeholder="your@email.com" value="'+S.form.email+'" oninput="S.form.email=this.value"></div>'
     +'<div class="field"><label>說明（選填）</label>'
     +'<input id="m-note" placeholder="如：需要滑鼠、特殊軟體需求…" value="'+S.form.note+'" oninput="S.form.note=this.value"></div>'
     +'<div class="flex gap-8 mt-12">'
@@ -582,11 +621,12 @@ function submitBooking(){
   var dept =(document.getElementById('m-dept') ?document.getElementById('m-dept').value.trim() :S.form.dept);
   var name =(document.getElementById('m-name') ?document.getElementById('m-name').value.trim() :S.form.name);
   var phone=(document.getElementById('m-phone')?document.getElementById('m-phone').value.trim():S.form.phone);
-  var ext  =(document.getElementById('m-ext')  ?document.getElementById('m-ext').value.trim()  :S.form.ext);
+  var email=(document.getElementById('m-email')?document.getElementById('m-email').value.trim():S.form.email);
   var note =(document.getElementById('m-note') ?document.getElementById('m-note').value.trim() :S.form.note);
   if(!dept) { toast('請填寫單位');   return; }
   if(!name) { toast('請填寫姓名');   return; }
   if(!phone){ toast('請填寫電話');   return; }
+  if(!email||email.indexOf('@')<0){ toast('請填寫正確的電子信箱'); return; }
   if(S.pickedComp===null){ toast('請選擇電腦'); return; }
   if(!S.form._dur){ toast('請選擇使用時間'); return; }
   if(S.blacklist[phone]){ toast('⚠️ 此電話已列入黑名單，無法預約'); return; }
@@ -594,28 +634,26 @@ function submitBooking(){
   var slots=SLOTS.slice(si,si+S.form._dur);
   var bs=bookedSet(S.modal.date,S.pickedComp);
   for(var i=0;i<slots.length;i++){ if(bs[slots[i]]){ toast('部分時段已被預約，請重新選擇'); return; } }
-  var code=String(Math.floor(1000+Math.random()*9000));
   var bData={
     date:S.modal.date, computer:S.pickedComp, slots:slots,
-    dept:dept, name:name, phone:phone, ext:ext, note:note,
-    cancelCode:code, status:'confirmed', createdAt:new Date().toISOString()
+    dept:dept, name:name, phone:phone, email:email, note:note,
+    status:'confirmed', createdAt:new Date().toISOString()
   };
   fbAddBooking(bData).then(function(newId){
     bData.id=newId;
     document.getElementById('modal-area').innerHTML='';
     S.modal=null; S.pickedComp=null;
     renderMain();
-    showSuccessOverlay(name, S.pickedComp||bData.computer, slots, code, bData);
+    showSuccessOverlay(name, bData.computer, slots, bData);
   }).catch(function(e){ toast('❌ 儲存失敗：'+e.message); });
 }
 
 // ══════════════════════════════════════════════════════════════════
 // SUCCESS OVERLAY（獨立元素，不被 renderMain 覆蓋）
 // ══════════════════════════════════════════════════════════════════
-function showSuccessOverlay(name, comp, slots, code, bData){
+function showSuccessOverlay(name, comp, slots, bData){
   var slipId='slip'+Date.now();
   var noteRow=bData.note?'<tr><td style="color:var(--text-sub);padding:4px 0;width:80px;font-weight:600">說明</td><td>'+bData.note+'</td></tr>':'';
-  var extStr=bData.ext?' #'+bData.ext:'';
 
   var ov=document.createElement('div');
   ov.id='success-ov';
@@ -629,20 +667,19 @@ function showSuccessOverlay(name, comp, slots, code, bData){
     +'<table style="width:100%;border-collapse:collapse;font-size:14px">'
     +'<tr><td style="color:var(--text-sub);padding:4px 0;width:80px;font-weight:600">日期</td><td><b>'+fDate(bData.date)+'</b></td></tr>'
     +'<tr><td style="color:var(--text-sub);padding:4px 0;font-weight:600">電腦</td><td>電腦 '+comp+'</td></tr>'
-    +'<tr><td style="color:var(--text-sub);padding:4px 0;font-weight:600">時段</td><td>'+slots[0]+' – '+endTime(slots)+' （'+(slots.length*0.5).toFixed(1)+' 小時）</td></tr>'
+    +'<tr><td style="color:var(--text-sub);padding:4px 0;font-weight:600">時段</td><td>'+toArr(slots)[0]+' – '+endTime(slots)+' （'+(toArr(slots).length*0.5).toFixed(1)+' 小時）</td></tr>'
     +'<tr><td style="color:var(--text-sub);padding:4px 0;font-weight:600">單位</td><td>'+bData.dept+'</td></tr>'
     +'<tr><td style="color:var(--text-sub);padding:4px 0;font-weight:600">姓名</td><td>'+name+'</td></tr>'
-    +'<tr><td style="color:var(--text-sub);padding:4px 0;font-weight:600">電話</td><td>'+bData.phone+extStr+'</td></tr>'
+    +'<tr><td style="color:var(--text-sub);padding:4px 0;font-weight:600">電話</td><td>'+bData.phone+'</td></tr>'
+    +'<tr><td style="color:var(--text-sub);padding:4px 0;font-weight:600">信箱</td><td>'+bData.email+'</td></tr>'
     +noteRow
     +'</table>'
-    +'<div style="margin-top:14px;padding:12px 14px;background:var(--amber-lt);border:1.5px dashed var(--amber);border-radius:8px;text-align:center">'
-    +'<div style="font-size:12px;color:var(--amber);font-weight:700;margin-bottom:6px">取消碼（請妥善保存）</div>'
-    +'<div style="font-size:40px;font-weight:700;color:var(--teal);letter-spacing:12px">'+code+'</div>'
-    +'<div style="font-size:12px;color:var(--text-muted);margin-top:6px">請<b>列印確認單</b>或<b>拍照保存</b>此碼<br>需取消時至「查詢我的預約」輸入電話後點「取消預約」，再輸入此碼</div>'
+    +'<div style="margin-top:14px;padding:12px 14px;background:var(--teal-lt);border:1.5px solid var(--teal-md);border-radius:8px">'
+    +'<div style="font-size:13px;color:var(--teal);font-weight:700;margin-bottom:4px">📧 取消預約方式</div>'
+    +'<div style="font-size:13px;color:var(--text-sub)">若需取消，請至「查詢我的預約」輸入電話查詢，點「取消預約」後輸入登記的 <b>電子信箱</b> 驗證即可完成</div>'
     +'</div></div>'
-    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
     +'<button class="btn" style="justify-content:center;font-size:14px" onclick="printSlip(\''+slipId+'\')">🖨️ 列印確認單</button>'
-    +'<button class="btn" id="cpbtn" style="justify-content:center;font-size:14px" onclick="copyCode(\''+code+'\')">📋 複製取消碼</button>'
     +'<button class="btn btn-primary" style="justify-content:center;font-size:14px" onclick="closeSuccessOv()">確定，已記下</button>'
     +'</div></div>';
   document.body.appendChild(ov);
@@ -715,7 +752,8 @@ function renderAdmin(){
   var tabs=[
     ['bookings','預約紀錄','btn-primary'],
     ['closed','休館日設定','btn-amber'],
-    ['blacklist','黑名單管理','btn-danger']
+    ['blacklist','黑名單管理','btn-danger'],
+    ['trash','資源回收桶（30天）','btn-red']
   ];
   var bar='<div class="flex gap-8 mb-16" style="align-items:center;flex-wrap:wrap">';
   tabs.forEach(function(t){
@@ -723,7 +761,7 @@ function renderAdmin(){
   });
   bar+='<span style="margin-left:auto;font-size:14px;color:var(--text-muted)">管理者模式</span>'
     +'<button class="btn btn-sm" onclick="S.isAdmin=false;showTab(\'reserve\')">登出</button></div>';
-  return bar+(S.adminTab==='bookings'?renderAdminBk():S.adminTab==='closed'?renderAdminClosed():renderAdminBL());
+  return bar+(S.adminTab==='bookings'?renderAdminBk():S.adminTab==='closed'?renderAdminClosed():S.adminTab==='blacklist'?renderAdminBL():renderAdminTrash());
 }
 function setAdminTab(t){ S.adminTab=t; renderMain(); }
 
@@ -733,7 +771,7 @@ function renderAdminBk(){
   if(af.date)     f=f.filter(function(b){ return b.date===af.date; });
   if(af.computer) f=f.filter(function(b){ return b.computer===parseInt(af.computer); });
   if(af.status)   f=f.filter(function(b){ return b.status===af.status; });
-  f.sort(function(a,b){ return a.date.localeCompare(b.date)||a.slots[0].localeCompare(b.slots[0]); });
+  f.forEach(function(b){ b.slots=toArr(b.slots); }); f.sort(function(a,b){ return a.date.localeCompare(b.date)||toArr(b.slots)[0].localeCompare(toArr(a.slots)[0]); });
 
   var compOpts='<option value="">全部</option>';
   COMPUTERS.forEach(function(c){ compOpts+='<option value="'+c+'"'+(af.computer==c?' selected':'')+'>電腦 '+c+'</option>'; });
@@ -756,7 +794,7 @@ function renderAdminBk(){
     +'</div></div>'
     +'<div class="card" style="margin-top:16px"><div class="table-wrap">'
     +'<table class="dtable"><thead><tr>'
-    +'<th>日期</th><th>電腦</th><th>時段</th><th>單位</th><th>姓名</th><th>電話</th><th>分機</th><th>說明</th><th>狀態</th><th>操作</th>'
+    +'<th>日期</th><th>電腦</th><th>時段</th><th>單位</th><th>姓名</th><th>電話</th><th>信箱</th><th>說明</th><th>狀態</th><th>操作</th>'
     +'</tr></thead><tbody>';
 
   if(!f.length){
@@ -773,12 +811,13 @@ function renderAdminBk(){
         if(b.status!=='arrived') acts+='<button class="btn btn-xs btn-green" data-id="'+b.id+'" data-st="arrived" onclick="markSt(this)">已到</button>';
         if(b.status!=='absent')  acts+='<button class="btn btn-xs btn-red" data-id="'+b.id+'" data-st="absent" onclick="markSt(this)">未到</button>';
         acts+='<button class="btn btn-xs" data-id="'+b.id+'" data-st="cancelled" onclick="markSt(this)">取消</button>';
+        acts+='<button class="btn btn-xs" style="background:#f5f0f0;color:#a42a2b;border-color:#f5c6c6" data-id="'+b.id+'" onclick="deleteBooking(this)">🗑️ 刪除</button>';
       } else acts='<span style="color:var(--text-muted);font-size:13px">—</span>';
       html+='<tr>'
         +'<td>'+fDate(b.date)+'</td><td>電腦 '+b.computer+'</td>'
-        +'<td style="white-space:nowrap">'+b.slots[0]+'–'+endTime(b.slots)+'</td>'
+        +'<td style="white-space:nowrap">'+toArr(b.slots)[0]+'–'+endTime(b.slots)+'</td>'
         +'<td>'+b.dept+'</td><td style="font-weight:600">'+b.name+isBlk+'</td>'
-        +'<td>'+b.phone+'</td><td>'+(b.ext||'—')+'</td>'
+        +'<td>'+b.phone+'</td><td style="font-size:13px">'+(b.email||'—')+'</td>'
         +'<td style="font-size:13px;max-width:140px">'
         +'<div style="display:flex;align-items:center;gap:6px">'
         +'<span style="color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100px">'+(b.note||'—')+'</span>'
@@ -827,6 +866,57 @@ function openEditNote(btn){
     +'</div></div></div>';
   setTimeout(function(){ var el=document.getElementById('en-input'); if(el) el.focus(); },80);
 }
+function deleteBooking(btn){
+  var id=btn.dataset.id;
+  document.getElementById('modal-area').innerHTML=
+    '<div class="modal-bg" onclick="if(event.target===this)closeModal()">'
+    +'<div class="modal" style="width:380px">'
+    +'<div class="modal-title">確認刪除</div>'
+    +'<p style="font-size:15px;color:var(--text-sub);margin-bottom:20px">此筆預約將移至回收桶，<b>30 天內</b>可從「資源回收桶」還原。</p>'
+    +'<div class="flex gap-8">'
+    +'<button class="btn btn-danger w-full" style="justify-content:center" data-id="'+id+'" onclick="confirmDelete(this)">確認刪除</button>'
+    +'<button class="btn w-full" style="justify-content:center" onclick="closeModal()">取消</button>'
+    +'</div></div></div>';
+}
+function confirmDelete(btn){
+  var id=btn.dataset.id;
+  fbDelete(id).then(function(){
+    S.bookings=S.bookings.filter(function(b){ return b.id!==id; });
+    closeModal(); toast('已刪除，可從回收桶還原（30 天內）'); renderMain();
+  }).catch(function(e){ toast('刪除失敗：'+e.message); });
+}
+
+function renderAdminTrash(){
+  var list=(S.trash||[]).slice().sort(function(a,b){ return (b._deletedAt||'').localeCompare(a._deletedAt||''); });
+  var rows=list.length?list.map(function(b){
+    var del=b._deletedAt?new Date(b._deletedAt).toLocaleDateString('zh-TW'):'—';
+    var expire=b._deletedAt?new Date(new Date(b._deletedAt).getTime()+30*24*3600*1000).toLocaleDateString('zh-TW'):'—';
+    return '<tr>'
+      +'<td>'+del+'</td>'
+      +'<td>'+fDate(b.date)+'</td><td>電腦 '+b.computer+'</td>'
+      +'<td style="white-space:nowrap">'+toArr(b.slots)[0]+'–'+endTime(b.slots)+'</td>'
+      +'<td>'+b.dept+'</td><td style="font-weight:600">'+b.name+'</td>'
+      +'<td style="font-size:13px;color:var(--text-muted)">'+(b.note||'—')+'</td>'
+      +'<td style="font-size:13px;color:var(--red)">'+expire+'</td>'
+      +'<td><button class="btn btn-xs btn-green" data-id="'+b.id+'" onclick="restoreBooking(this)">還原</button></td>'
+      +'</tr>';
+  }).join('')
+  :'<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--text-muted)">回收桶為空</td></tr>';
+
+  return '<div class="card">'
+    +'<div class="section-title">🗑️ 資源回收桶（'+list.length+' 筆，保留 30 天）</div>'
+    +'<p style="font-size:14px;color:var(--text-muted);margin-bottom:14px">已刪除的預約可在此還原，超過 30 天將自動永久刪除。</p>'
+    +'<div class="table-wrap"><table class="dtable"><thead><tr>'
+    +'<th>刪除日</th><th>預約日</th><th>電腦</th><th>時段</th><th>單位</th><th>姓名</th><th>說明</th><th>到期日</th><th>操作</th>'
+    +'</tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+}
+function restoreBooking(btn){
+  var id=btn.dataset.id;
+  fbRestore(id).then(function(){
+    toast('✅ 預約已還原'); renderMain();
+  }).catch(function(e){ toast('還原失敗：'+e.message); });
+}
+
 function saveNote(btn){
   var id=btn.dataset.id;
   var val=document.getElementById('en-input')?document.getElementById('en-input').value.trim():'';
@@ -916,16 +1006,16 @@ function renderReport(){
   var f=S.bookings.filter(function(b){ return b.status!=='cancelled'; });
   if(S.rFrom) f=f.filter(function(b){ return b.date>=S.rFrom; });
   if(S.rTo)   f=f.filter(function(b){ return b.date<=S.rTo; });
-  var total=f.length, totalH=f.reduce(function(s,b){ return s+b.slots.length*0.5; },0);
+  var total=f.length, totalH=f.reduce(function(s,b){ return s+toArr(b.slots).length*0.5; },0);
   var absent=f.filter(function(b){ return b.status==='absent'; }).length;
   var arrived=f.filter(function(b){ return b.status==='arrived'; }).length;
   var rate=total>0?Math.round(arrived/total*100):0;
   var slotCnt={};
-  f.forEach(function(b){ b.slots.forEach(function(sl){ slotCnt[sl]=(slotCnt[sl]||0)+1; }); });
+  f.forEach(function(b){ toArr(b.slots).forEach(function(sl){ slotCnt[sl]=(slotCnt[sl]||0)+1; }); });
   var topSlots=Object.keys(slotCnt).map(function(k){ return [k,slotCnt[k]]; }).sort(function(a,b){ return b[1]-a[1]; }).slice(0,5);
   var maxSl=topSlots.length?topSlots[0][1]:1;
   var compH={};
-  COMPUTERS.forEach(function(c){ compH[c]=f.filter(function(b){ return b.computer===c; }).reduce(function(s,b){ return s+b.slots.length*0.5; },0); });
+  COMPUTERS.forEach(function(c){ compH[c]=f.filter(function(b){ return b.computer===c; }).reduce(function(s,b){ return s+toArr(b.slots).length*0.5; },0); });
   var maxCH=Math.max.apply(null,COMPUTERS.map(function(c){ return compH[c]; }).concat([1]));
 
   var html='<div class="card">'
@@ -966,12 +1056,12 @@ function renderReport(){
     return '<tr><td>'+fDate(b.date)+'</td><td>電腦 '+b.computer+'</td><td>'+b.dept+'</td>'
       +'<td style="font-weight:600">'+b.name+'</td><td>'+b.phone+'</td><td>'+(b.ext||'—')+'</td>'
       +'<td style="color:var(--text-muted);font-size:13px">'+(b.note||'—')+'</td>'
-      +'<td style="white-space:nowrap">'+b.slots[0]+'–'+endTime(b.slots)+'</td>'
-      +'<td>'+(b.slots.length*0.5).toFixed(1)+' h</td><td>'+stLabel(b.status)+'</td></tr>';
+      +'<td style="white-space:nowrap">'+toArr(b.slots)[0]+'–'+endTime(b.slots)+'</td>'
+      +'<td>'+(toArr(b.slots).length*0.5).toFixed(1)+' h</td><td>'+stLabel(b.status)+'</td></tr>';
   }).join('');
   html+='<div class="card" style="margin-top:16px"><div class="section-title">預約清單（'+f.length+' 筆）</div>'
     +'<div class="table-wrap"><table class="dtable"><thead><tr>'
-    +'<th>日期</th><th>電腦</th><th>單位</th><th>姓名</th><th>電話</th><th>分機</th><th>說明</th><th>時段</th><th>時數</th><th>狀態</th>'
+    +'<th>日期</th><th>電腦</th><th>單位</th><th>姓名</th><th>電話</th><th>信箱</th><th>說明</th><th>時段</th><th>時數</th><th>狀態</th>'
     +'</tr></thead><tbody>'+(listRows||'<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--text-muted)">無資料</td></tr>')+'</tbody></table></div></div>';
   return html;
 }
@@ -984,8 +1074,8 @@ function getExport(){
 }
 function exportCSV(){
   var f=getExport();
-  var rows=[['日期','電腦','單位','姓名','電話','分機','說明','開始','結束','時數','狀態']];
-  f.forEach(function(b){ rows.push([fDate(b.date),'電腦'+b.computer,b.dept,b.name,b.phone,b.ext||'',b.note||'',b.slots[0],endTime(b.slots),(b.slots.length*0.5).toFixed(1),stLabel(b.status)]); });
+  var rows=[['日期','電腦','單位','姓名','電話','信箱','說明','開始','結束','時數','狀態']];
+  f.forEach(function(b){ rows.push([fDate(b.date),'電腦'+b.computer,b.dept,b.name,b.phone,b.email||'',b.note||'',toArr(b.slots)[0],endTime(b.slots),(toArr(b.slots).length*0.5).toFixed(1),stLabel(b.status)]); });
   var csv=rows.map(function(r){ return r.map(function(c){ return '"'+String(c).replace(/"/g,'""')+'"'; }).join(','); }).join('\n');
   var a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv'}));
@@ -994,12 +1084,12 @@ function exportCSV(){
 }
 function exportXLSX(){
   var f=getExport();
-  var ws1=[['日期','電腦','單位','姓名','電話','分機','說明','開始','結束','時數','狀態']];
-  f.forEach(function(b){ ws1.push([fDate(b.date),'電腦'+b.computer,b.dept,b.name,b.phone,b.ext||'',b.note||'',b.slots[0],endTime(b.slots),+(b.slots.length*0.5).toFixed(1),stLabel(b.status)]); });
+  var ws1=[['日期','電腦','單位','姓名','電話','信箱','說明','開始','結束','時數','狀態']];
+  f.forEach(function(b){ ws1.push([fDate(b.date),'電腦'+b.computer,b.dept,b.name,b.phone,b.email||'',b.note||'',toArr(b.slots)[0],endTime(b.slots),+(toArr(b.slots).length*0.5).toFixed(1),stLabel(b.status)]); });
   var active=f.filter(function(b){ return b.status!=='cancelled'; });
-  var totalH=active.reduce(function(s,b){ return s+b.slots.length*0.5; },0);
+  var totalH=active.reduce(function(s,b){ return s+toArr(b.slots).length*0.5; },0);
   var ws2=[['項目','數值'],['總筆數',f.length],['總時數',+totalH.toFixed(1)],['未到次數',f.filter(function(b){ return b.status==='absent'; }).length]];
-  COMPUTERS.forEach(function(c){ ws2.push(['電腦'+c+'時數',+active.filter(function(b){ return b.computer===c; }).reduce(function(s,b){ return s+b.slots.length*0.5; },0).toFixed(1)]); });
+  COMPUTERS.forEach(function(c){ ws2.push(['電腦'+c+'時數',+active.filter(function(b){ return b.computer===c; }).reduce(function(s,b){ return s+toArr(b.slots).length*0.5; },0).toFixed(1)]); });
   var wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(ws1),'預約清單');
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(ws2),'統計摘要');
@@ -1009,18 +1099,18 @@ function exportXLSX(){
 function printPDF(){
   var f=getExport().filter(function(b){ return b.status!=='cancelled'; });
   var range=S.rFrom||S.rTo?(S.rFrom||'—')+' 至 '+(S.rTo||'—'):'全部';
-  var totalH=f.reduce(function(s,b){ return s+b.slots.length*0.5; },0);
+  var totalH=f.reduce(function(s,b){ return s+toArr(b.slots).length*0.5; },0);
   var absent=f.filter(function(b){ return b.status==='absent'; }).length;
   var arrived=f.filter(function(b){ return b.status==='arrived'; }).length;
   var rate=f.length>0?Math.round(arrived/f.length*100):0;
-  var sc={};f.forEach(function(b){ b.slots.forEach(function(sl){ sc[sl]=(sc[sl]||0)+1; }); });
+  var sc={};f.forEach(function(b){ toArr(b.slots).forEach(function(sl){ sc[sl]=(sc[sl]||0)+1; }); });
   var top=Object.keys(sc).map(function(k){ return [k,sc[k]]; }).sort(function(a,b){ return b[1]-a[1]; }).slice(0,5);
-  var ch={};COMPUTERS.forEach(function(c){ ch[c]=f.filter(function(b){ return b.computer===c; }).reduce(function(s,b){ return s+b.slots.length*0.5; },0); });
+  var ch={};COMPUTERS.forEach(function(c){ ch[c]=f.filter(function(b){ return b.computer===c; }).reduce(function(s,b){ return s+toArr(b.slots).length*0.5; },0); });
   var maxCH=Math.max.apply(null,COMPUTERS.map(function(c){ return ch[c]; }).concat([1]));
   var rows=f.slice().sort(function(a,b){ return b.date.localeCompare(a.date); }).map(function(b){
     return '<tr><td>'+fDate(b.date)+'</td><td>電腦'+b.computer+'</td><td>'+b.dept+'</td><td>'+b.name+'</td>'
-      +'<td>'+b.phone+(b.ext?' #'+b.ext:'')+'</td><td>'+(b.note||'—')+'</td>'
-      +'<td>'+b.slots[0]+'–'+endTime(b.slots)+'</td><td>'+(b.slots.length*0.5).toFixed(1)+'h</td><td>'+stLabel(b.status)+'</td></tr>';
+      +'<td>'+b.phone+'</td><td style="font-size:10px">'+(b.email||'—')+'</td><td>'+(b.note||'—')+'</td>'
+      +'<td>'+toArr(b.slots)[0]+'–'+endTime(b.slots)+'</td><td>'+(toArr(b.slots).length*0.5).toFixed(1)+'h</td><td>'+stLabel(b.status)+'</td></tr>';
   }).join('');
   var w=window.open('','_blank');
   if(!w){ toast('請允許彈出視窗以列印'); return; }
@@ -1055,7 +1145,7 @@ function printPDF(){
     +'<div><div class="st">各電腦使用時數</div>'+COMPUTERS.map(function(c){ return '<div class="br"><div class="bl">電腦'+c+'</div><div class="bt"><div class="bf" style="width:'+Math.round(ch[c]/maxCH*100)+'%;background:'+COMP_COLORS[c-1]+'"></div></div><div class="bv">'+ch[c].toFixed(1)+'h</div></div>'; }).join('')+'</div>'
     +'</div>'
     +'<div class="st">預約清單（'+f.length+' 筆）</div>'
-    +'<table><thead><tr><th>日期</th><th>電腦</th><th>單位</th><th>姓名</th><th>電話/分機</th><th>說明</th><th>時段</th><th>時數</th><th>狀態</th></tr></thead>'
+    +'<table><thead><tr><th>日期</th><th>電腦</th><th>單位</th><th>姓名</th><th>電話</th><th>信箱</th><th>說明</th><th>時段</th><th>時數</th><th>狀態</th></tr></thead>'
     +'<tbody>'+rows+'</tbody></table>'
     +'<script>window.onload=function(){window.print();}<\/script>'
     +'</body></html>');
