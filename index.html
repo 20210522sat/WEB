@@ -15,10 +15,10 @@
 // 3. Email Templates → 建立 template，Template ID 填下方
 // 4. Account → Public Key 填下方
 var EJ_PUBLIC_KEY    = "q19iOsGJuTXHCfQ2Q";    // emailjs 帳號 public key
-var EJ_SERVICE_ID    = "18118@hosp.nycu.edu.tw";    // Add Service 後取得
-var EJ_TEMPLATE_ID   = "template_3izlg0j";  // Email Templates 中建立的 template
-var NOTIFY_EMAIL     = "18118@hosp.nycu.edu.tw";
-if(EJ_PUBLIC_KEY!=="YOUR_PUBLIC_KEY") emailjs.init({ publicKey: EJ_PUBLIC_KEY });
+var EJ_SERVICE_ID    = "18139@hosp.nycu.edu.tw";    // Add Service 後取得
+var EJ_TEMPLATE_ID   = "template_py655gp";  // Email Templates 中建立的 template
+var NOTIFY_EMAIL     = "18139@hosp.nycu.edu.tw";
+if(EJ_PUBLIC_KEY!=="q19iOsGJuTXHCfQ2Q") emailjs.init({ publicKey: EJ_PUBLIC_KEY });
 
 function sendBookingNotify(bData, slots){
   if(EJ_PUBLIC_KEY==="YOUR_PUBLIC_KEY") return; // 未設定時跳過
