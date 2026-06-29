@@ -6,6 +6,37 @@
 <title>電腦預約系統</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- EmailJS: 免費寄信服務，每月 200 封。需在 emailjs.com 建立帳號並填入下方設定 -->
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<script>
+// ★★★ 請填入你的 EmailJS 設定 ★★★
+// 1. 到 https://www.emailjs.com 免費註冊
+// 2. Add Service → Gmail（用 18118@hosp.nycu.edu.tw 授權）
+// 3. Email Templates → 建立 template，Template ID 填下方
+// 4. Account → Public Key 填下方
+var EJ_PUBLIC_KEY    = "q19iOsGJuTXHCfQ2Q";    // emailjs 帳號 public key
+var EJ_SERVICE_ID    = "18118@hosp.nycu.edu.tw";    // Add Service 後取得
+var EJ_TEMPLATE_ID   = "template_3izlg0j";  // Email Templates 中建立的 template
+var NOTIFY_EMAIL     = "18118@hosp.nycu.edu.tw";
+if(EJ_PUBLIC_KEY!=="YOUR_PUBLIC_KEY") emailjs.init({ publicKey: EJ_PUBLIC_KEY });
+
+function sendBookingNotify(bData, slots){
+  if(EJ_PUBLIC_KEY==="YOUR_PUBLIC_KEY") return; // 未設定時跳過
+  var params={
+    to_email:   NOTIFY_EMAIL,
+    booking_date: bData.date,
+    computer:   "電腦 "+bData.computer,
+    time_slot:  slots[0]+" – "+endTime(slots),
+    dept:       bData.dept,
+    name:       bData.name,
+    phone:      bData.phone,
+    email:      bData.email,
+    note:       bData.note||"（無）"
+  };
+  emailjs.send(EJ_SERVICE_ID, EJ_TEMPLATE_ID, params)
+    .catch(function(e){ console.warn("通知信發送失敗:", e); });
+}
+</script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <style>
@@ -138,7 +169,7 @@ table.dtable tr:hover td{background:#f7faf7}
 // CONFIG
 // ══════════════════════════════════════════════════════════════════
 var COMPUTERS   = [1,2,3,4];
-var OPEN=9, CLOSE=17, MAX_SLOTS=8;
+var OPEN=9, CLOSE=17, MAX_SLOTS=4;
 var ADMIN_PASS  = 'admin1234';   // ★ 改成你的密碼
 var COMP_COLORS = ['#2F4F4F','#018948','#BC7527','#DAA520'];
 var CHIP_CLS    = ['chip-c1','chip-c2','chip-c3','chip-c4'];
@@ -177,7 +208,7 @@ var S = {
   bookings:[], trash:[], closedDates:{}, blacklist:{}, absCount:{},
   noticeLines:[
     '📌 <b>開放時間</b>：週一至週五 09:00–17:00',
-    '⏱️ <b>每次最多預約 4 小時</b>（以 30 分鐘為單位）',
+    '⏱️ <b>每次最多預約 2 小時</b>（以 30 分鐘為單位）',
     '🔄 若後續時段無人預約，可向工作人員辦理<b>現場續借</b>',
     '🚫 累積 <b>3 次預約未到</b>將列入黑名單，停止預約資格',
     '🔑 <b>取消預約</b>：查詢後輸入登記<b>電子信箱</b>驗證即可',
@@ -363,16 +394,6 @@ function renderMain(){
   document.getElementById('main').innerHTML =
     S.tab==='reserve'?renderReserve():S.tab==='admin'?renderAdmin():renderReport();
 }
-function clearAllBookings(){
-  if(!confirm('確定要清除所有預約紀錄嗎？（會先移到回收桶，可在30天內還原）')) return;
-  var moves=S.bookings.map(function(b){
-    var d=Object.assign({},b); d._deletedAt=new Date().toISOString();
-    return DB.ref('trash/'+b.id).set(d).then(function(){ return DB.ref('bookings/'+b.id).remove(); });
-  });
-  Promise.all(moves).then(function(){
-    toast('✅ 已將所有預約移至回收桶'); renderMain();
-  }).catch(function(e){ toast('清除失敗：'+e.message); });
-}
 function adminLogout(){
   S.isAdmin=false; S.tab='reserve';
   ['reserve','report'].forEach(function(k){
@@ -510,7 +531,7 @@ function renderQueryResult(){
     var st=b.status==='arrived' ?'<span class="badge badge-green">已到</span>'
           :b.status==='absent'  ?'<span class="badge badge-red">未到</span>'
           :b.status==='cancelled'?'<span class="badge badge-gray">已取消</span>'
-          :'<span class="badge badge-teal">確認中</span>';
+          :'<span class="badge badge-teal">已預約</span>';
     var canCancel=b.status==='confirmed'&&b.date>=today();
     var cancelBtn=canCancel
       ?'<button class="btn btn-xs btn-danger" data-bid="'+b.id+'" onclick="userCancelFlow(this)">取消預約</button>'
@@ -694,6 +715,7 @@ function submitBooking(){
     bData.id=newId;
     document.getElementById('modal-area').innerHTML='';
     S.modal=null; S.pickedComp=null;
+    sendBookingNotify(bData, slots); // 通知信
     renderMain();
     showSuccessOverlay(name, bData.computer, slots, bData);
   }).catch(function(e){ toast('❌ 儲存失敗：'+e.message); });
@@ -813,7 +835,6 @@ function renderAdmin(){
     bar+='<button class="btn'+(S.adminTab===t[0]?' '+t[2]:'')+'" onclick="setAdminTab(\''+t[0]+'\')">'+t[1]+'</button>';
   });
   bar+='<span style="margin-left:auto;font-size:14px;color:var(--text-muted)">管理者模式</span>'
-  +'<button class="btn btn-sm btn-danger" style="opacity:.8" onclick="clearAllBookings()">清空所有預約</button>'
   +'<button class="btn btn-sm" onclick="adminLogout()">登出</button></div>';
   return bar+(S.adminTab==='bookings'?renderAdminBk():S.adminTab==='closed'?renderAdminClosed():S.adminTab==='blacklist'?renderAdminBL():renderAdminTrash());
 }
@@ -837,7 +858,7 @@ function renderAdminBk(){
     +'<div><label>電腦</label><select onchange="S.adminFilter.computer=this.value;renderMain()">'+compOpts+'</select></div>'
     +'<div><label>狀態</label><select onchange="S.adminFilter.status=this.value;renderMain()">'
     +'<option value="">全部</option>'
-    +'<option value="confirmed"'+(af.status==='confirmed'?' selected':'')+'>已確認</option>'
+    +'<option value="confirmed"'+(af.status==='confirmed'?' selected':'')+'>已預約</option>'
     +'<option value="arrived"'+(af.status==='arrived'?' selected':'')+'>已到</option>'
     +'<option value="absent"'+(af.status==='absent'?' selected':'')+'>未到</option>'
     +'<option value="cancelled"'+(af.status==='cancelled'?' selected':'')+'>已取消</option>'
@@ -858,7 +879,7 @@ function renderAdminBk(){
       var stBadge=b.status==='arrived' ?'<span class="badge badge-green">已到</span>'
                  :b.status==='absent'  ?'<span class="badge badge-red">未到</span>'
                  :b.status==='cancelled'?'<span class="badge badge-gray">取消</span>'
-                 :'<span class="badge badge-teal">確認</span>';
+                 :'<span class="badge badge-teal">已預約</span>';
       var blkKey2=(b.name+'|'+b.dept).toLowerCase();
       var isBlk=(S.blacklist[blkKey2]||S.blacklist[b.phone])?'<span class="badge badge-red" style="margin-left:5px">黑</span>':'';
       var acts='';
@@ -1076,7 +1097,7 @@ function removeBL(btn){
 // ══════════════════════════════════════════════════════════════════
 // REPORT
 // ══════════════════════════════════════════════════════════════════
-function stLabel(s){ return s==='arrived'?'已到':s==='absent'?'未到':s==='cancelled'?'取消':'確認'; }
+function stLabel(s){ return s==='arrived'?'已到':s==='absent'?'未到':s==='cancelled'?'取消':'已預約'; }
 
 function renderNoticeLines(){
   return S.noticeLines.map(function(l){ return '<div>'+l+'</div>'; }).join('');
