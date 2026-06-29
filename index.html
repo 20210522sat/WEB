@@ -59,19 +59,19 @@ input:focus,select:focus,textarea:focus{border-color:var(--teal);box-shadow:0 0 
 .week-grid{border-collapse:collapse;width:100%;min-width:820px}
 .week-grid th{padding:13px 8px;font-size:15px;font-weight:700;color:var(--text-sub);border:1px solid var(--border);background:#f4f7f4;text-align:center}
 .week-grid th.today-h{background:var(--teal-lt);color:var(--teal)}
-.week-grid td{border:1px solid var(--border);vertical-align:middle;padding:0}
+.week-grid td{border:1px solid var(--border);vertical-align:top;padding:0;max-width:0}
 .time-cell{font-size:13px;color:var(--text-muted);text-align:center;background:#f4f7f4;border-right:1px solid var(--border);width:62px;font-weight:600;height:52px;vertical-align:middle}
-.slot-cell{padding:3px;min-height:52px;height:52px;cursor:pointer;transition:background .1s;vertical-align:middle}
+.slot-cell{padding:3px;min-height:52px;height:52px;cursor:pointer;transition:background .1s;vertical-align:top;overflow:hidden}
 .slot-cell:hover{background:#f0f5f0}
 .slot-cell.closed-cell{background:#fafaf8;cursor:default}
 .slot-cell.past-cell{background:#fafaf8;cursor:default;opacity:.5}
-.booking-chip{border-radius:5px;padding:3px 6px;font-size:11px;line-height:1.3;margin:1px 2px;overflow:hidden;display:flex;align-items:center;gap:5px;white-space:nowrap;pointer-events:none}
+.booking-chip{border-radius:5px;padding:2px 5px;font-size:11px;line-height:1.3;margin:1px;overflow:hidden;display:flex;align-items:center;gap:4px;pointer-events:none;max-width:100%;box-sizing:border-box}
 .chip-c1{background:var(--teal-lt);border-left:4px solid var(--teal);color:#1d3535}
 .chip-c2{background:var(--green-lt);border-left:4px solid var(--green);color:#015a30}
 .chip-c3{background:var(--amber-lt);border-left:4px solid var(--amber);color:#7a4d14}
 .chip-c4{background:var(--gold-lt);border-left:4px solid var(--gold);color:#7a5a00}
-.chip-name{font-weight:700;white-space:nowrap;flex-shrink:0}
-.chip-sub{opacity:.75;white-space:nowrap;font-size:11px;overflow:hidden;text-overflow:ellipsis}
+.chip-name{font-weight:700;white-space:nowrap;flex-shrink:0;font-size:11px}
+.chip-sub{opacity:.8;white-space:nowrap;font-size:11px;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1}
 .slot-add{font-size:12px;color:var(--text-muted);text-align:center;display:flex;align-items:center;justify-content:center;opacity:.45;pointer-events:none;padding:2px}
 .comp-legend{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:14px}
 .comp-dot{width:13px;height:13px;border-radius:4px;flex-shrink:0}
@@ -232,10 +232,10 @@ function fbRestore(id){
 }
 function fbAddClosed(d)    { return DB.ref('closedDates/'+d).set(true); }
 function fbDelClosed(d)    { return DB.ref('closedDates/'+d).remove(); }
-function fbAddBL(phone,info){
-  return DB.ref('blacklist/'+safeKey(phone)).set(Object.assign({phone:phone},info));
+function fbAddBL(key,info){
+  return DB.ref('blacklist/'+safeKey(key)).set(info);
 }
-function fbDelBL(phone){ return DB.ref('blacklist/'+safeKey(phone)).remove(); }
+function fbDelBL(key){ return DB.ref('blacklist/'+safeKey(key)).remove(); }
 function fbUpdateAbs(phone,count){
   return DB.ref('absCount/'+safeKey(phone)).set({phone:phone,count:count});
 }
@@ -256,7 +256,9 @@ DB.ref('blacklist').on('value', function(snap){
   var data = snap.val() || {};
   S.blacklist = {};
   Object.keys(data).forEach(function(k){
-    var v=data[k]; if(v&&v.phone) S.blacklist[v.phone]=v;
+    var v=data[k];
+    if(v&&v.name&&v.dept){ S.blacklist[(v.name+'|'+v.dept).toLowerCase()]=v; }
+    else if(v&&v.phone){ S.blacklist[v.phone]=v; }
   });
   if(window._appReady) renderMain();
 });
@@ -360,6 +362,16 @@ window._appReady=false;
 function renderMain(){
   document.getElementById('main').innerHTML =
     S.tab==='reserve'?renderReserve():S.tab==='admin'?renderAdmin():renderReport();
+}
+function clearAllBookings(){
+  if(!confirm('確定要清除所有預約紀錄嗎？（會先移到回收桶，可在30天內還原）')) return;
+  var moves=S.bookings.map(function(b){
+    var d=Object.assign({},b); d._deletedAt=new Date().toISOString();
+    return DB.ref('trash/'+b.id).set(d).then(function(){ return DB.ref('bookings/'+b.id).remove(); });
+  });
+  Promise.all(moves).then(function(){
+    toast('✅ 已將所有預約移至回收桶'); renderMain();
+  }).catch(function(e){ toast('清除失敗：'+e.message); });
 }
 function adminLogout(){
   S.isAdmin=false; S.tab='reserve';
@@ -667,7 +679,8 @@ function submitBooking(){
   if(!email||email.indexOf('@')<0){ toast('請填寫正確的電子信箱'); return; }
   if(S.pickedComp===null){ toast('請選擇電腦'); return; }
   if(!S.form._dur){ toast('請選擇使用時間'); return; }
-  if(S.blacklist[phone]){ toast('⚠️ 此電話已列入黑名單，無法預約'); return; }
+  var blKey=(name+'|'+dept).toLowerCase();
+  if(S.blacklist[blKey]){ toast('⚠️ 此姓名／單位已列入黑名單，無法預約'); return; }
   var si=SLOTS.indexOf(S.modal.startSlot);
   var slots=SLOTS.slice(si,si+S.form._dur);
   var bs=bookedSet(S.modal.date,S.pickedComp);
@@ -800,7 +813,8 @@ function renderAdmin(){
     bar+='<button class="btn'+(S.adminTab===t[0]?' '+t[2]:'')+'" onclick="setAdminTab(\''+t[0]+'\')">'+t[1]+'</button>';
   });
   bar+='<span style="margin-left:auto;font-size:14px;color:var(--text-muted)">管理者模式</span>'
-    +'<button class="btn btn-sm" onclick="adminLogout()">登出</button></div>';
+  +'<button class="btn btn-sm btn-danger" style="opacity:.8" onclick="clearAllBookings()">清空所有預約</button>'
+  +'<button class="btn btn-sm" onclick="adminLogout()">登出</button></div>';
   return bar+(S.adminTab==='bookings'?renderAdminBk():S.adminTab==='closed'?renderAdminClosed():S.adminTab==='blacklist'?renderAdminBL():renderAdminTrash());
 }
 function setAdminTab(t){ S.adminTab=t; renderMain(); }
@@ -845,7 +859,8 @@ function renderAdminBk(){
                  :b.status==='absent'  ?'<span class="badge badge-red">未到</span>'
                  :b.status==='cancelled'?'<span class="badge badge-gray">取消</span>'
                  :'<span class="badge badge-teal">確認</span>';
-      var isBlk=S.blacklist[b.phone]?'<span class="badge badge-red" style="margin-left:5px">黑</span>':'';
+      var blkKey2=(b.name+'|'+b.dept).toLowerCase();
+      var isBlk=(S.blacklist[blkKey2]||S.blacklist[b.phone])?'<span class="badge badge-red" style="margin-left:5px">黑</span>':'';
       var acts='';
       if(b.status!=='cancelled'){
         if(b.status!=='arrived') acts+='<button class="btn btn-xs btn-green" data-id="'+b.id+'" data-st="arrived" onclick="markSt(this)">已到</button>';
@@ -880,11 +895,12 @@ function markSt(btn){
   if(status==='absent'){
     S.absCount[b.phone]=(S.absCount[b.phone]||0)+1;
     fbUpdateAbs(b.phone, S.absCount[b.phone]);
-    if(S.absCount[b.phone]>=3&&!S.blacklist[b.phone]){
-      var info={name:b.name,dept:b.dept,count:S.absCount[b.phone]};
-      S.blacklist[b.phone]=info;
-      fbAddBL(b.phone,info);
-      toast('⚠️ '+b.name+' 累積 3 次未到，已自動列入黑名單');
+    var blk=(b.name+'|'+b.dept).toLowerCase();
+    if(S.absCount[b.phone]>=3&&!S.blacklist[blk]){
+      var info={name:b.name,dept:b.dept,phone:b.phone,count:S.absCount[b.phone]};
+      S.blacklist[blk]=info;
+      fbAddBL(blk,info);
+      toast('⚠️ '+b.name+'（'+b.dept+'）累積 3 次未到，已自動列入黑名單');
     }
   }
   fbUpdate(id,{status:status});
@@ -943,12 +959,21 @@ function renderAdminTrash(){
   }).join('')
   :'<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--text-muted)">回收桶為空</td></tr>';
 
+  var clearBtn=list.length?'<button class="btn btn-sm btn-danger" onclick="clearTrash()">🗑️ 清除全部（永久刪除）</button>':'';
   return '<div class="card">'
-    +'<div class="section-title">🗑️ 資源回收桶（'+list.length+' 筆，保留 30 天）</div>'
+    +'<div class="flex items-center justify-between mb-8"><div class="section-title" style="margin-bottom:0">🗑️ 資源回收桶（'+list.length+' 筆，保留 30 天）</div>'+clearBtn+'</div>'
     +'<p style="font-size:14px;color:var(--text-muted);margin-bottom:14px">已刪除的預約可在此還原，超過 30 天將自動永久刪除。</p>'
     +'<div class="table-wrap"><table class="dtable"><thead><tr>'
     +'<th>刪除日</th><th>預約日</th><th>電腦</th><th>時段</th><th>單位</th><th>姓名</th><th>說明</th><th>到期日</th><th>操作</th>'
     +'</tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+}
+function clearTrash(){
+  if(!confirm('確定要永久刪除回收桶中所有 '+((S.trash||[]).length)+' 筆紀錄？此動作無法復原。')) return;
+  var ids=(S.trash||[]).map(function(b){ return b.id; });
+  var promises=ids.map(function(id){ return DB.ref('trash/'+id).remove(); });
+  Promise.all(promises).then(function(){
+    S.trash=[]; toast('✅ 回收桶已清空'); renderMain();
+  }).catch(function(e){ toast('清除失敗：'+e.message); });
 }
 function restoreBooking(btn){
   var id=btn.dataset.id;
@@ -998,24 +1023,26 @@ function delClosed(btn){
 
 function renderAdminBL(){
   var list=Object.keys(S.blacklist);
-  var rows=list.length?list.map(function(phone){
-    var info=S.blacklist[phone];
+  var rows=list.length?list.map(function(blk){
+    var info=S.blacklist[blk];
+    var absC=info.phone?S.absCount[info.phone]||0:0;
     return '<div class="bl-item">'
       +'<div class="flex items-center gap-8">'
-      +'<span style="font-weight:700;font-size:16px">'+phone+'</span>'
-      +'<span style="color:var(--text-muted);font-size:14px">'+(info.name||'')+' '+(info.dept?'｜'+info.dept:'')+'</span>'
-      +'<span class="badge badge-red">未到 '+(S.absCount[phone]||0)+' 次</span>'
+      +'<span style="font-weight:700;font-size:16px">'+(info.name||blk)+'</span>'
+      +'<span style="color:var(--text-muted);font-size:14px">'+(info.dept?'｜'+info.dept:'')+'</span>'
+      +'<span class="badge badge-red">未到 '+absC+' 次</span>'
       +'</div>'
-      +'<button class="btn btn-sm" data-phone="'+phone+'" onclick="removeBL(this)">解除黑名單</button>'
+      +'<button class="btn btn-sm" data-blk="'+blk+'" onclick="removeBL(this)">解除黑名單</button>'
       +'</div>';
   }).join(''):'<p style="color:var(--text-muted);font-size:15px">黑名單為空</p>';
   return '<div class="card">'
     +'<div class="section-title">手動新增黑名單</div>'
     +'<div class="grid-3">'
-    +'<div><label>電話</label><input id="bl-phone" type="tel" placeholder="0912345678"></div>'
+    +'<div><label>電話（選填）</label><input id="bl-phone" type="tel" placeholder="0912345678"></div>'
     +'<div><label>姓名</label><input id="bl-name" placeholder="姓名"></div>'
     +'<div><label>單位</label><input id="bl-dept" placeholder="單位"></div>'
     +'</div>'
+    +'<p style="font-size:13px;color:var(--text-muted);margin-bottom:8px">⚠️ 黑名單以<b>姓名＋單位</b>判斷，姓名與單位為必填</p>'
     +'<button class="btn btn-danger mt-12" onclick="addBL()">加入黑名單</button>'
     +'</div>'
     +'<div class="card" style="margin-top:16px">'
@@ -1026,14 +1053,15 @@ function addBL(){
   var p=document.getElementById('bl-phone')?document.getElementById('bl-phone').value.trim():'';
   var n=document.getElementById('bl-name')?document.getElementById('bl-name').value.trim():'';
   var d=document.getElementById('bl-dept')?document.getElementById('bl-dept').value.trim():'';
-  if(!p){ toast('請輸入電話'); return; }
-  var info={name:n,dept:d,count:0};
-  S.blacklist[p]=info; fbAddBL(p,info);
+  if(!n||!d){ toast('請填寫姓名和單位（黑名單以姓名＋單位判斷）'); return; }
+  var blk=(n+'|'+d).toLowerCase();
+  var info={name:n,dept:d,phone:p||'',count:0};
+  S.blacklist[blk]=info; fbAddBL(blk,info);
   toast('已加入黑名單'); renderMain();
 }
 function removeBL(btn){
-  var phone=btn.dataset.phone;
-  delete S.blacklist[phone]; fbDelBL(phone);
+  var blk=btn.dataset.blk;
+  delete S.blacklist[blk]; fbDelBL(blk);
   renderMain(); toast('已解除黑名單');
 }
 
